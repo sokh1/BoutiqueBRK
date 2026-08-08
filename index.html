@@ -1570,6 +1570,12 @@
             if (!p.createdAt) p.createdAt = p.lastUpdated || new Date().toISOString();
             if (p.supplierAmountPaid === undefined || p.supplierAmountPaid === null || p.supplierAmountPaid === '') p.supplierAmountPaid = 0;
             if (p.supplierPaidDate === undefined) p.supplierPaidDate = '';
+            // Anciens produits créés avant la séparation stock / fournisseur : on fige la quantité
+            // actuelle comme base de calcul du "Total Achat" fournisseur (purchaseQty), pour que les
+            // prochaines commandes/déclarations de perte (qui ne touchent que le stock courant, qty)
+            // n'affectent plus jamais ce total ni le statut de règlement fournisseur.
+            if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') p.purchaseQty = p.qty;
+            if (!p.supplierLastUpdated) p.supplierLastUpdated = p.lastUpdated || p.createdAt;
         });
         // Anciens clients sans date de création
         AppState.clients.forEach(c => {
@@ -1717,6 +1723,14 @@
                     auditLogs: data.auditLogs || AppState.auditLogs || [],
                     settings: { ...AppState.settings, ...data.settings, sheetUrl: url }
                 };
+
+                // Anciens produits (Sheet créé avant la séparation stock / fournisseur) : même
+                // migration que celle appliquée au chargement local, pour que purchaseQty existe
+                // toujours avant tout calcul de "Total Achat" fournisseur.
+                AppState.products.forEach(p => {
+                    if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') p.purchaseQty = p.qty;
+                    if (!p.supplierLastUpdated) p.supplierLastUpdated = p.lastUpdated || p.createdAt;
+                });
 
                 // Sécurité : si le Sheet contient encore un mot de passe en clair (compte créé
                 // avant l'activation du hachage, ou modifié manuellement dans le Sheet), on le
@@ -2455,7 +2469,7 @@
 
             const suppliersUnpaidTotal = AppState.products.reduce((sum, p) => {
                 if (!p.supplierId) return sum;
-                const totalAchat = (p.priceBuy || 0) * p.qty;
+                const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                 const paid = Number(p.supplierAmountPaid) || 0;
                 const status = computeSupplierPaymentStatus(paid, totalAchat);
                 if (status === 'Impayé' || status === 'Partiel') {
@@ -2485,7 +2499,7 @@
             // Trop perçu côté fournisseurs (produits au statut "Trop perçu — à rembourser")
             const suppliersOverpaidTotal = AppState.products.reduce((sum, p) => {
                 if (!p.supplierId) return sum;
-                const totalAchat = (p.priceBuy || 0) * p.qty;
+                const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                 const paid = Number(p.supplierAmountPaid) || 0;
                 const status = computeSupplierPaymentStatus(paid, totalAchat);
                 if (status === 'Trop perçu — à rembourser') {
@@ -2715,18 +2729,26 @@
                     const supplierStatusStyles = { 'Payé': 'bg-emerald-100 text-emerald-800', 'Impayé': 'bg-rose-100 text-rose-800', 'Partiel': 'bg-amber-100 text-amber-800', 'Trop perçu — à rembourser': 'bg-purple-100 text-purple-800' };
                     const productsHtml = linkedProducts.length
                         ? linkedProducts.map(p => {
-                            const dateStr = p.lastUpdated ? new Date(p.lastUpdated).toLocaleDateString('fr-FR') : '-';
-                            const label = `${p.name}_${p.ref || p.id}_${p.qty}_${dateStr}`;
+                            // purchaseQty/supplierLastUpdated : figés au dernier ajout/édition manuelle du
+                            // produit, jamais modifiés par une commande ou une déclaration de perte — ce
+                            // qui garantit que cette carte fournisseur ne bouge pas tant qu'aucune vraie
+                            // opération d'achat/règlement fournisseur n'a eu lieu.
+                            const supplierDateStr = p.supplierLastUpdated ? new Date(p.supplierLastUpdated).toLocaleDateString('fr-FR') : '-';
+                            const label = `${p.name}_${p.ref || p.id}_${p.purchaseQty ?? p.qty}_${supplierDateStr}`;
                             const fileBtn = p.fileData ? `<button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip"></i></button>` : '';
-                            const totalAchat = (p.priceBuy || 0) * p.qty;
+                            const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                             const paidToSupplier = Number(p.supplierAmountPaid) || 0;
                             const supplierStatus = computeSupplierPaymentStatus(paidToSupplier, totalAchat);
                             const paidDateStr = p.supplierPaidDate ? new Date(p.supplierPaidDate).toLocaleDateString('fr-FR') : null;
+                            const isOverpaid = supplierStatus === 'Trop perçu — à rembourser';
                             return `
                                 <div class="border border-slate-100 rounded-lg p-2.5 mb-1.5 last:mb-0 bg-white">
                                     <div class="flex items-center justify-between gap-2 flex-wrap">
                                         <span class="text-xs font-mono font-medium text-slate-700">${label}${fileBtn}</span>
-                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${supplierStatusStyles[supplierStatus]}">${supplierStatus}</span>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${supplierStatusStyles[supplierStatus]}">${supplierStatus}</span>
+                                            ${isOverpaid ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">Réglé : ${paidToSupplier.toFixed(2)} UM</span>` : ''}
+                                        </div>
                                     </div>
                                     <div class="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-50">
                                         <span class="text-[11px] text-slate-500">Total achat: <span class="font-bold text-slate-800">${totalAchat.toFixed(2)} UM</span></span>
@@ -3301,7 +3323,7 @@
         function openRegularizeSupplierPayment(productId) {
             const p = AppState.products.find(pr => pr.id === productId);
             if (!p) return;
-            const totalAchat = (p.priceBuy || 0) * p.qty;
+            const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
 
             document.getElementById('regularize-product-id').value = p.id;
             document.getElementById('regularize-supplier-product-name').textContent = `${p.name}${p.ref ? ' — ' + p.ref : ''}`;
@@ -3347,7 +3369,7 @@
             p.regularisePar = currentUser ? currentUser.username : '';
             saveAppState();
 
-            const totalAchat = (p.priceBuy || 0) * p.qty;
+            const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
             const status = computeSupplierPaymentStatus(amount, totalAchat);
             closeModal('modal-regularize-supplier');
             showToast(`Paiement fournisseur mis à jour pour "${p.name}" : ${amount.toFixed(2)} UM (${status})`);
@@ -3365,6 +3387,29 @@
                 order.paymentHistory.push({ date: new Date().toISOString(), amount: delta });
             }
             order.amountPaid = next;
+        }
+
+        // Conversion bidirectionnelle du champ "versement" entre UM et EUR, au taux de
+        // change ENREGISTRÉ sur la commande (jamais le taux courant de Réglages une fois la
+        // commande créée). Ne touche jamais AppState : purement une aide de saisie côté UI.
+        function syncVersementFromUM(orderId, rate) {
+            const umInput = document.getElementById(`amount-paid-input-${orderId}`);
+            const eurInput = document.getElementById(`amount-paid-input-eur-${orderId}`);
+            if (!umInput || !eurInput) return;
+            const um = parseFloat(umInput.value);
+            const r = Number(rate) || 1;
+            if (isNaN(um)) { eurInput.value = ''; return; }
+            eurInput.value = (um / r).toFixed(2);
+        }
+
+        function syncVersementFromEUR(orderId, rate) {
+            const umInput = document.getElementById(`amount-paid-input-${orderId}`);
+            const eurInput = document.getElementById(`amount-paid-input-eur-${orderId}`);
+            if (!umInput || !eurInput) return;
+            const eur = parseFloat(eurInput.value);
+            const r = Number(rate) || 1;
+            if (isNaN(eur)) { umInput.value = ''; return; }
+            umInput.value = (eur * r).toFixed(2);
         }
 
         // Ajoute un NOUVEAU versement (montant saisi = ce paiement précis, pas le total cumulé) :
@@ -3542,8 +3587,60 @@
                 doc.setTextColor(0);
             }
 
-            doc.save(`Commande_${(order.clientName || 'client').replace(/\s+/g, '_')}_${order.date}.pdf`);
+            const pdfFileName = `Commande_${(order.clientName || 'client').replace(/\s+/g, '_')}_${order.date}.pdf`;
+            doc.save(pdfFileName);
             showToast('Facture PDF téléchargée !');
+
+            // Envoi automatique, en tâche de fond, d'une copie de ce PDF vers le dossier
+            // Drive "factures" — en plus du téléchargement local ci-dessus, jamais à sa
+            // place. Le téléchargement local a déjà eu lieu, donc un échec ici (pas de
+            // connexion, dossier Drive non configuré, sous-dossier "factures" absent...)
+            // n'empêche jamais l'utilisateur de récupérer sa facture : on se contente
+            // d'un avertissement discret.
+            uploadOrderPdfToDrive_(doc, pdfFileName).catch(err => {
+                console.warn('Envoi de la facture vers Drive échoué:', err);
+                showToast('Facture téléchargée, mais l\'envoi vers le dossier Drive "factures" a échoué : ' + (err.message || 'Erreur inconnue'), 'warning');
+            });
+        }
+
+        // Convertit un Blob en base64 brut (sans le préfixe "data:...;base64,").
+        function blobToBase64_(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result || '';
+                    const commaIdx = result.indexOf(',');
+                    resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+                };
+                reader.onerror = () => reject(new Error('Lecture du PDF impossible'));
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        // Envoie une copie du PDF facture/reçu déjà généré vers le sous-dossier Drive
+        // "factures" (sous le dossier Drive racine configuré dans Réglages). Ce
+        // sous-dossier doit déjà exister — voir resolveNamedSubfolder_ côté Code.gs.
+        async function uploadOrderPdfToDrive_(doc, fileName) {
+            const sheetUrl = AppState.settings.sheetUrl;
+            if (!sheetUrl) {
+                throw new Error('Connecte d\'abord la base (Réglages) et configure un dossier Drive avec un sous-dossier "factures"');
+            }
+            const blob = doc.output('blob');
+            const base64Data = await blobToBase64_(blob);
+            const res = await fetch(sheetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'uploadDriveFile',
+                    subfolderName: 'factures',
+                    fileName,
+                    mimeType: 'application/pdf',
+                    base64Data
+                })
+            });
+            if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || "Échec de l'envoi vers Drive");
         }
 
         function renderOrders() {
@@ -3681,9 +3778,18 @@
                                     </div>
                                 </div>
                             ` : ''}
-                            <div class="flex items-center space-x-2">
-                                <input type="number" step="0.01" min="0" id="amount-paid-input-${o.id}" value="" placeholder="Montant du versement" class="flex-grow bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                                <button onclick="addOrderPayment('${o.id}', document.getElementById('amount-paid-input-${o.id}').value)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap">
+                            <div class="space-y-2">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 block mb-0.5">Versement (UM)</label>
+                                        <input type="number" step="0.01" min="0" id="amount-paid-input-${o.id}" value="" placeholder="0.00" oninput="syncVersementFromUM('${o.id}', ${orderExchangeRate})" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 block mb-0.5">Versement (€)</label>
+                                        <input type="number" step="0.01" min="0" id="amount-paid-input-eur-${o.id}" value="" placeholder="0.00" oninput="syncVersementFromEUR('${o.id}', ${orderExchangeRate})" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                    </div>
+                                </div>
+                                <button onclick="addOrderPayment('${o.id}', document.getElementById('amount-paid-input-${o.id}').value)" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg text-xs">
                                     Ajouter le versement
                                 </button>
                             </div>
@@ -4089,7 +4195,7 @@
 
             } else if (category === 'suppliers') {
                 const linkedProducts = AppState.products.filter(p => p.supplierId && dateInRange(p.createdAt, start, end));
-                const totalAchat = linkedProducts.reduce((s, p) => s + (p.priceBuy || 0) * p.qty, 0);
+                const totalAchat = linkedProducts.reduce((s, p) => s + (p.priceBuy || 0) * (p.purchaseQty ?? p.qty), 0);
                 const totalPaid = linkedProducts.reduce((s, p) => s + (Number(p.supplierAmountPaid) || 0), 0);
                 const totalDue = totalAchat - totalPaid;
                 const supplierStatusStyles = { 'Payé': 'bg-emerald-100 text-emerald-800', 'Impayé': 'bg-rose-100 text-rose-800', 'Partiel': 'bg-amber-100 text-amber-800', 'Trop perçu — à rembourser': 'bg-purple-100 text-purple-800' };
@@ -4098,7 +4204,7 @@
                 linkedProducts.forEach(p => {
                     const sid = p.supplierId;
                     if (!bySupplier[sid]) bySupplier[sid] = { supplier: getSupplierById(sid), totalAchat: 0, totalPaid: 0, count: 0 };
-                    bySupplier[sid].totalAchat += (p.priceBuy || 0) * p.qty;
+                    bySupplier[sid].totalAchat += (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                     bySupplier[sid].totalPaid += Number(p.supplierAmountPaid) || 0;
                     bySupplier[sid].count++;
                 });
@@ -4153,7 +4259,7 @@
                                     <tbody class="divide-y divide-slate-100">
                                         ${linkedProducts.map(p => {
                                             const sup = getSupplierById(p.supplierId);
-                                            const pTotalAchat = (p.priceBuy || 0) * p.qty;
+                                            const pTotalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                                             const pPaid = Number(p.supplierAmountPaid) || 0;
                                             const pStatus = computeSupplierPaymentStatus(pPaid, pTotalAchat);
                                             const pPaidDate = p.supplierPaidDate ? new Date(p.supplierPaidDate).toLocaleDateString('fr-FR') : '-';
@@ -4548,16 +4654,63 @@
             if (statusEl) statusEl.innerHTML = '';
         }
 
-        function viewDeclarationFile(id) {
+        async function viewDeclarationFile(id) {
             const entry = (AppState.expenses || []).find(e => e.id === id);
-            if (!entry || !entry.fileData) {
+            if (!entry || (!entry.driveFileId && !entry.fileData)) {
                 showToast('Aucune pièce jointe pour cette déclaration', 'warning');
                 return;
             }
+            // Nouvelles déclarations (v21+) : le fichier est sur Drive, on le récupère via l'API.
+            if (entry.driveFileId) {
+                try {
+                    showToast('Ouverture du fichier...', 'success');
+                    const { blob } = await fetchDriveFileBlob_(entry.driveFileId);
+                    const objectUrl = URL.createObjectURL(blob);
+                    window.open(objectUrl, '_blank');
+                } catch (err) {
+                    console.error('Erreur ouverture pièce jointe Drive:', err);
+                    showToast("Impossible d'ouvrir la pièce jointe : " + (err.message || 'Erreur inconnue'), 'error');
+                }
+                return;
+            }
+            // Anciennes déclarations (avant v21) : le fichier est encore encodé dans la feuille.
             openDataUriInNewTab(entry.fileData, entry.fileName || 'fichier');
         }
 
-        function handleDeclarationForm(e) {
+        // Envoie la pièce jointe en attente (si présente) vers le sous-dossier Drive
+        // "declarations" (sous le dossier Drive racine configuré dans Réglages), et
+        // renvoie une référence { driveFileId, fileName } à stocker sur la déclaration.
+        // Ne stocke plus jamais le fichier encodé directement dans la feuille "Depenses" :
+        // seule la référence Drive est conservée, ce qui allège la feuille. Si aucun
+        // fichier n'a été sélectionné, renvoie une référence vide sans rien envoyer.
+        async function uploadPendingDeclFile_() {
+            if (!declPendingFileData) return { driveFileId: '', fileName: '' };
+            const sheetUrl = AppState.settings.sheetUrl;
+            if (!sheetUrl) {
+                throw new Error("Connecte d'abord la base (Réglages) et configure un dossier Drive avec un sous-dossier \"declarations\" pour joindre un fichier");
+            }
+            const commaIdx = declPendingFileData.indexOf(',');
+            const base64Data = commaIdx >= 0 ? declPendingFileData.slice(commaIdx + 1) : declPendingFileData;
+            const mimeMatch = declPendingFileData.match(/^data:([^;]+);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+            const res = await fetch(sheetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'uploadDriveFile',
+                    subfolderName: 'declarations',
+                    fileName: declPendingFileName || 'fichier',
+                    mimeType,
+                    base64Data
+                })
+            });
+            if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || "Échec de l'envoi de la pièce jointe vers Drive");
+            return { driveFileId: json.file.id, fileName: json.file.name };
+        }
+
+        async function handleDeclarationForm(e) {
             e.preventDefault();
             const amount = parseFloat(document.getElementById('decl-amount').value);
             const date = document.getElementById('decl-date').value || new Date().toISOString().split('T')[0];
@@ -4573,6 +4726,15 @@
 
             if (declarationKind === 'expense') {
                 const category = document.getElementById('decl-expense-type').value;
+
+                let fileRef;
+                try {
+                    fileRef = await uploadPendingDeclFile_();
+                } catch (err) {
+                    showToast(err.message || "Impossible d'envoyer la pièce jointe", 'error');
+                    return;
+                }
+
                 entry = {
                     id: 'decl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                     kind: 'expense',
@@ -4585,8 +4747,8 @@
                     amount,
                     note,
                     date,
-                    fileData: declPendingFileData,
-                    fileName: declPendingFileName,
+                    driveFileId: fileRef.driveFileId,
+                    fileName: fileRef.fileName,
                     createdBy: authorName,
                     createdAt: new Date().toISOString()
                 };
@@ -4604,6 +4766,14 @@
                 if (isNaN(newPrice) || newPrice < 0) { showToast('Nouveau prix invalide', 'warning'); return; }
                 if (newPrice > (product.priceBuy || 0)) { showToast("Le nouveau prix ne peut pas dépasser le prix d'achat", 'warning'); return; }
 
+                let fileRef;
+                try {
+                    fileRef = await uploadPendingDeclFile_();
+                } catch (err) {
+                    showToast(err.message || "Impossible d'envoyer la pièce jointe", 'error');
+                    return;
+                }
+
                 // La perte est une sortie de stock sans vente : on décrémente la quantité du produit
                 product.qty -= qty;
                 product.lastUpdated = new Date().toISOString();
@@ -4620,8 +4790,8 @@
                     amount,
                     note,
                     date,
-                    fileData: declPendingFileData,
-                    fileName: declPendingFileName,
+                    driveFileId: fileRef.driveFileId,
+                    fileName: fileRef.fileName,
                     createdBy: authorName,
                     createdAt: new Date().toISOString()
                 };
@@ -4683,7 +4853,7 @@
                 const title = isLoss ? `${e.productName} (${e.cause}) × ${e.qty}` : (e.category || 'Dépense');
                 const dateStr = e.date ? new Date(e.date + 'T00:00:00').toLocaleDateString('fr-FR') : '';
                 const authorStr = e.createdBy ? ` · Par ${e.createdBy}` : '';
-                const fileBtn = e.fileData ? `<button onclick="viewDeclarationFile('${e.id}')" title="Voir la pièce jointe" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : '';
+                const fileBtn = (e.driveFileId || e.fileData) ? `<button onclick="viewDeclarationFile('${e.id}')" title="Voir la pièce jointe" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : '';
                 return `
                     <div class="flex items-center justify-between gap-3 border border-slate-100 rounded-xl p-3">
                         <div class="flex items-center space-x-3 min-w-0">
@@ -5371,7 +5541,12 @@
                 const authorName = currentUser ? currentUser.username : '';
                 const createdBy = existingIdx >= 0 ? (AppState.products[existingIdx].createdBy || '') : authorName;
 
-                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, fileData, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName };
+                // purchaseQty (quantité de référence pour le calcul du "Total Achat" côté fournisseur)
+                // n'est mise à jour QUE par ce formulaire (création/édition manuelle d'un produit),
+                // jamais par une commande ou une déclaration de perte : ces dernières ne modifient
+                // que le stock courant (qty), afin que la page Fournisseurs reste stable tant que
+                // rien n'a réellement changé côté achat/règlement fournisseur.
+                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, fileData, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName, purchaseQty: qty, supplierLastUpdated: new Date().toISOString() };
 
                 if (existingIdx >= 0) {
                     AppState.products[existingIdx] = prodObj;

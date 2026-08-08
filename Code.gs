@@ -55,15 +55,48 @@
  * commandes, qui enregistre chaque versement (date + montant) reçu sur une
  * commande. Stockée en JSON dans la feuille, comme la colonne 'items',
  * décodée/encodée automatiquement par ce script.
+ *
+ * SÉPARATION STOCK / FOURNISSEUR (v20) : deux nouvelles colonnes sur les
+ * produits, 'purchaseQty' et 'supplierLastUpdated'. Elles servent de base
+ * FIGÉE au calcul du "Total Achat" et du statut de règlement fournisseur,
+ * uniquement mises à jour depuis le formulaire Produit (ajout/édition) côté
+ * appli. Ainsi, vendre du stock (commande) ou déclarer une perte — qui ne
+ * touchent que la quantité en stock courante ('qty') — ne modifie plus
+ * jamais le montant dû ou le statut affiché sur la page Fournisseurs. Ce
+ * script n'a rien de particulier à faire : il lit/écrit ces deux colonnes
+ * comme les autres.
+ *
+ * SOUS-DOSSIERS NOMMÉS "declarations" / "factures" (v21) : l'action
+ * 'uploadDriveFile' accepte maintenant un paramètre optionnel
+ * 'subfolderName'. Quand il est fourni, le fichier n'est PAS envoyé dans le
+ * dossier Drive racine configuré dans Réglages, mais dans le SOUS-DOSSIER du
+ * même nom qui s'y trouve déjà (ex. "declarations", "factures"). Ce
+ * sous-dossier doit exister au préalable dans le dossier Drive racine —
+ * ce script ne crée jamais de dossier automatiquement, il renvoie une
+ * erreur explicite si le sous-dossier est introuvable. Ce comportement est
+ * utilisé par : (1) les pièces jointes de Déclaration Dépense/Perte, qui
+ * sont maintenant envoyées vers Drive (dossier "declarations") au lieu
+ * d'être stockées encodées dans la feuille "Depenses" ; (2) le PDF
+ * facture/reçu généré pour chaque commande, envoyé en plus de son
+ * téléchargement local vers Drive (dossier "factures"). L'upload "libre"
+ * vers un dossier précis (page Documents, paramètre 'folderId') continue de
+ * fonctionner exactement comme avant.
+ *
+ * Pour cette même raison, deux nouvelles colonnes 'driveFileId' et 'fileName'
+ * ont été ajoutées à l'onglet "Depenses" (déclarations) : elles remplacent
+ * l'ancienne pièce jointe encodée en base64 (qui n'était d'ailleurs pas
+ * synchronisée avec cette feuille — les colonnes correspondantes n'existaient
+ * pas encore) par une simple référence légère vers le fichier stocké sur
+ * Drive.
  * ==========================================================================
  */
 
 const SHEETS = {
-  products: { name: 'Produits', cols: ['id', 'ref', 'name', 'category', 'priceBuy', 'priceSell', 'qty', 'minQty', 'supplierId', 'lastUpdated', 'createdAt', 'supplierAmountPaid', 'supplierPaidDate', 'regularisePar', 'createdBy', 'updatedBy'] },
+  products: { name: 'Produits', cols: ['id', 'ref', 'name', 'category', 'priceBuy', 'priceSell', 'qty', 'minQty', 'supplierId', 'lastUpdated', 'createdAt', 'supplierAmountPaid', 'supplierPaidDate', 'regularisePar', 'createdBy', 'updatedBy', 'purchaseQty', 'supplierLastUpdated'] },
   suppliers: { name: 'Fournisseurs', cols: ['id', 'name', 'phone', 'notes'] },
   clients: { name: 'Clients', cols: ['id', 'nom', 'prenom', 'lieu', 'phone', 'notes', 'createdAt'] },
   orders: { name: 'Commandes', cols: ['id', 'clientId', 'clientName', 'beneficiaryNom', 'beneficiaryPrenom', 'items', 'total', 'amountPaid', 'status', 'paymentMethod', 'date', 'createdAt', 'createdBy', 'updatedBy', 'exchangeRate', 'paymentHistory'] },
-  expenses: { name: 'Depenses', cols: ['id', 'kind', 'category', 'productId', 'productName', 'cause', 'qty', 'newPrice', 'amount', 'note', 'date', 'createdAt', 'createdBy'] },
+  expenses: { name: 'Depenses', cols: ['id', 'kind', 'category', 'productId', 'productName', 'cause', 'qty', 'newPrice', 'amount', 'note', 'date', 'createdAt', 'createdBy', 'driveFileId', 'fileName'] },
   users: { name: 'Utilisateurs', cols: ['id', 'username', 'password', 'role', 'createdAt'] },
   waLogs: { name: 'LogsWhatsApp', cols: ['id', 'timestamp', 'type', 'recipient', 'message'] },
   auditLogs: { name: 'LogsAudit', cols: ['id', 'timestamp', 'username', 'entityType', 'entityId', 'entityLabel', 'action', 'details'] },
@@ -98,7 +131,7 @@ function doPost(e) {
     }
 
     if (body.action === 'uploadDriveFile') {
-      return jsonResponse(uploadDriveFile_(body.folderId, body.fileName, body.mimeType, body.base64Data));
+      return jsonResponse(uploadDriveFile_(body.folderId, body.fileName, body.mimeType, body.base64Data, body.subfolderName));
     }
 
     return jsonResponse({ success: false, error: 'Action inconnue: ' + body.action });
@@ -300,13 +333,57 @@ function getDriveFileAsBase64_(fileId) {
   }
 }
 
-// Ajoute un nouveau fichier dans le dossier Drive indiqué (à partir de son contenu
-// encodé en base64, envoyé par la page Documents). C'est la SEULE opération
-// d'écriture Drive exposée par ce script : elle crée un nouveau fichier, elle ne
-// touche jamais à un fichier ou dossier existant.
-function uploadDriveFile_(folderIdParam, fileName, mimeType, base64Data) {
+// Résout l'ID d'un sous-dossier existant, désigné par son NOM, directement sous le
+// dossier Drive racine configuré dans Réglages (clé 'driveFolderId'). Ne crée jamais
+// le sous-dossier : si absent, renvoie null pour que l'appelant produise une erreur
+// explicite invitant l'utilisateur à le créer lui-même dans Google Drive.
+function resolveNamedSubfolder_(subfolderName) {
   const rootSetting = getSettingValue_('driveFolderId');
-  const targetId = extractDriveId_(folderIdParam || rootSetting);
+  const rootId = extractDriveId_(rootSetting);
+  if (!rootId) {
+    return { error: "Aucun dossier Google Drive n'est configuré. Renseignez-le dans Réglages." };
+  }
+
+  let rootFolder;
+  try {
+    rootFolder = DriveApp.getFolderById(rootId);
+  } catch (err) {
+    return { error: "Dossier Google Drive principal introuvable ou inaccessible (vérifiez Réglages)." };
+  }
+
+  const subIt = rootFolder.getFoldersByName(subfolderName);
+  if (!subIt.hasNext()) {
+    return { error: `Le sous-dossier "${subfolderName}" n'existe pas dans le dossier Drive configuré. Crée-le d'abord dans Google Drive (au même niveau que les autres dossiers), puis réessaie.` };
+  }
+
+  return { id: subIt.next().getId() };
+}
+
+// Ajoute un nouveau fichier dans le dossier Drive indiqué (à partir de son contenu
+// encodé en base64, envoyé par la page Documents, ou par les Déclarations/Commandes).
+// C'est la SEULE opération d'écriture Drive exposée par ce script : elle crée un
+// nouveau fichier, elle ne touche jamais à un fichier ou dossier existant.
+//
+// Deux modes de ciblage du dossier de destination, mutuellement exclusifs :
+//  - subfolderName fourni (ex. "declarations", "factures") : le fichier va dans le
+//    sous-dossier de ce nom, sous le dossier Drive racine (Réglages). Ce sous-dossier
+//    doit déjà exister, sinon erreur explicite (aucune création automatique).
+//  - sinon, folderIdParam (ID ou lien Drive) est utilisé tel quel comme dossier cible
+//    (comportement historique de la page Documents), avec repli sur le dossier racine
+//    si folderIdParam est vide.
+function uploadDriveFile_(folderIdParam, fileName, mimeType, base64Data, subfolderName) {
+  let targetId;
+
+  if (subfolderName) {
+    const resolved = resolveNamedSubfolder_(subfolderName);
+    if (resolved.error) {
+      return { success: false, error: resolved.error };
+    }
+    targetId = resolved.id;
+  } else {
+    const rootSetting = getSettingValue_('driveFolderId');
+    targetId = extractDriveId_(folderIdParam || rootSetting);
+  }
 
   if (!targetId) {
     return { success: false, error: "Aucun dossier Google Drive n'est configuré. Renseignez-le dans Réglages." };
