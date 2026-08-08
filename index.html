@@ -355,8 +355,8 @@
                 </div>
             </div>
 
-            <!-- Résumé financier : impayés commandes/fournisseurs, encaissé sur pertes -->
-            <div class="agent-restricted grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <!-- Résumé financier : impayés commandes/fournisseurs, encaissé sur pertes, trop perçu -->
+            <div class="agent-restricted grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
                 <button type="button" onclick="switchTab('orders')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Impayés Commandes</span>
@@ -402,6 +402,38 @@
                     <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
                         <i class="fa-solid fa-tag text-slate-400"></i>
                         <span>Toutes déclarations de perte confondues</span>
+                    </div>
+                </button>
+
+                <button type="button" onclick="switchTab('orders')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Trop perçu à rendre (Clients)</span>
+                        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-hand-holding-dollar"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-orders-overpaid-total" class="text-2xl font-extrabold text-purple-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-rotate-left text-slate-400"></i>
+                        <span>Statut "Rendre au client"</span>
+                    </div>
+                </button>
+
+                <button type="button" onclick="switchTab('suppliers')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Trop perçu Fournisseurs</span>
+                        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-hand-holding-dollar"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-suppliers-overpaid-total" class="text-2xl font-extrabold text-purple-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-rotate-left text-slate-400"></i>
+                        <span>Statut "Trop perçu — à rembourser"</span>
                     </div>
                 </button>
             </div>
@@ -2440,6 +2472,30 @@
             const kpiLossesEncaisseEl = document.getElementById('kpi-losses-encaisse-total');
             if (kpiLossesEncaisseEl) kpiLossesEncaisseEl.innerText = lossesEncaisseTotal.toFixed(2) + ' UM';
 
+            // Trop perçu à rendre aux clients (commandes au statut "Rendre au client")
+            const ordersOverpaidTotal = AppState.orders.reduce((sum, o) => {
+                if (o.status === 'Rendre au client') {
+                    return sum + Math.max(0, (Number(o.amountPaid) || 0) - (Number(o.total) || 0));
+                }
+                return sum;
+            }, 0);
+            const kpiOrdersOverpaidEl = document.getElementById('kpi-orders-overpaid-total');
+            if (kpiOrdersOverpaidEl) kpiOrdersOverpaidEl.innerText = ordersOverpaidTotal.toFixed(2) + ' UM';
+
+            // Trop perçu côté fournisseurs (produits au statut "Trop perçu — à rembourser")
+            const suppliersOverpaidTotal = AppState.products.reduce((sum, p) => {
+                if (!p.supplierId) return sum;
+                const totalAchat = (p.priceBuy || 0) * p.qty;
+                const paid = Number(p.supplierAmountPaid) || 0;
+                const status = computeSupplierPaymentStatus(paid, totalAchat);
+                if (status === 'Trop perçu — à rembourser') {
+                    return sum + Math.max(0, paid - totalAchat);
+                }
+                return sum;
+            }, 0);
+            const kpiSuppliersOverpaidEl = document.getElementById('kpi-suppliers-overpaid-total');
+            if (kpiSuppliersOverpaidEl) kpiSuppliersOverpaidEl.innerText = suppliersOverpaidTotal.toFixed(2) + ' UM';
+
             // Commandes impayées/partiellement payées, réparties par utilisateur (createdBy)
             const unpaidByUserContainer = document.getElementById('dash-unpaid-by-user');
             if (unpaidByUserContainer) {
@@ -3311,17 +3367,24 @@
             order.amountPaid = next;
         }
 
-        function updateOrderAmountPaid(id, rawValue) {
+        // Ajoute un NOUVEAU versement (montant saisi = ce paiement précis, pas le total cumulé) :
+        // il vient s'ajouter au montant déjà payé, se soustrait automatiquement du reste dû, et
+        // s'enregistre comme une ligne de plus dans l'historique des paiements de la commande.
+        function addOrderPayment(id, rawValue) {
             const order = AppState.orders.find(o => o.id === id);
             if (!order) return;
-            let amountPaid = parseFloat(rawValue);
-            if (isNaN(amountPaid) || amountPaid < 0) amountPaid = 0;
-            recordOrderPayment(order, amountPaid);
+            const paymentAmount = parseFloat(rawValue);
+            if (isNaN(paymentAmount) || paymentAmount <= 0) {
+                showToast('Saisis un montant de versement valide', 'warning');
+                return;
+            }
+            const newTotalPaid = (Number(order.amountPaid) || 0) + paymentAmount;
+            recordOrderPayment(order, newTotalPaid);
             order.status = computeOrderStatus(order.amountPaid, order.total);
             order.updatedBy = currentUser ? currentUser.username : '';
             order.updatedAt = new Date().toISOString();
             saveAppState();
-            showToast(`Montant payé mis à jour : ${order.amountPaid.toFixed(2)} UM (${order.status})`);
+            showToast(`Versement de ${paymentAmount.toFixed(2)} UM enregistré (${order.status})`);
         }
 
         function deleteOrder(id) {
@@ -3619,9 +3682,9 @@
                                 </div>
                             ` : ''}
                             <div class="flex items-center space-x-2">
-                                <input type="number" step="0.01" min="0" id="amount-paid-input-${o.id}" value="${amountPaid}" class="flex-grow bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                                <button onclick="updateOrderAmountPaid('${o.id}', document.getElementById('amount-paid-input-${o.id}').value)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap">
-                                    Mettre à jour
+                                <input type="number" step="0.01" min="0" id="amount-paid-input-${o.id}" value="" placeholder="Montant du versement" class="flex-grow bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <button onclick="addOrderPayment('${o.id}', document.getElementById('amount-paid-input-${o.id}').value)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg text-xs whitespace-nowrap">
+                                    Ajouter le versement
                                 </button>
                             </div>
                         </div>
