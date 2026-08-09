@@ -861,12 +861,11 @@
                         <div class="flex items-center gap-2">
                             <div class="relative flex-grow sm:flex-grow-0">
                                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                                <input type="text" id="documents-search-input" oninput="filterDriveFolderContent()" placeholder="Rechercher..." class="pl-8 pr-3 py-2.5 rounded-xl text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full sm:w-48">
+                                <input type="text" id="documents-search-input" oninput="filterDriveFolderContent()" placeholder="Rechercher..." class="pl-8 pr-3 py-2.5 rounded-xl text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full sm:w-72">
                             </div>
                             <input type="file" id="documents-upload-input" class="hidden" onchange="handleDocumentsFileUpload(event)">
-                            <button onclick="document.getElementById('documents-upload-input').click()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm flex items-center space-x-2 transition-all shadow-md whitespace-nowrap">
+                            <button onclick="document.getElementById('documents-upload-input').click()" title="Ajouter un fichier" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-center transition-all shadow-md flex-shrink-0">
                                 <i class="fa-solid fa-upload"></i>
-                                <span>Ajouter un fichier</span>
                             </button>
                         </div>
                         <button onclick="loadDriveFolder(driveCurrentFolderId, false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-4 py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all whitespace-nowrap w-full sm:w-auto">
