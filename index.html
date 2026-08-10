@@ -582,10 +582,6 @@
 
                 <!-- Right Actions -->
                 <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
-                    <button onclick="resetDefaultProducts()" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold px-3 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all">
-                        <i class="fa-solid fa-rotate-left"></i>
-                        <span>Recharger Liste Produits</span>
-                    </button>
                     <button onclick="openAddProductModal()" class="agent-restricted bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center space-x-2 transition-all shadow-md">
                         <i class="fa-solid fa-plus"></i>
                         <span>Ajouter un Produit</span>
@@ -961,16 +957,12 @@
                         <span>Gestion des Données (Export / Import)</span>
                     </h2>
                     <p class="text-xs text-slate-600 leading-relaxed">
-                        Si une URL Google Sheet est configurée, elle est la source de vérité : les données s'y synchronisent à chaque modification. Sans URL, tout reste stocké localement dans ce navigateur. Vous pouvez aussi exporter votre base ou charger le jeu de données des produits de première nécessité.
+                        Si une URL Google Sheet est configurée, elle est la source de vérité : les données s'y synchronisent à chaque modification. Sans URL, tout reste stocké localement dans ce navigateur. Vous pouvez aussi exporter votre base.
                     </p>
                     <div class="flex flex-col space-y-3 pt-2">
                         <button onclick="exportDataJSON()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all">
                             <i class="fa-solid fa-download"></i>
                             <span>Exporter les Données en JSON</span>
-                        </button>
-                        <button onclick="resetDefaultProducts()" class="w-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold py-2.5 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all">
-                            <i class="fa-solid fa-rotate-left"></i>
-                            <span>Réinitialiser avec la Liste de Produits Alimentaires</span>
                         </button>
                     </div>
                 </div>
@@ -1460,52 +1452,13 @@
         const LOGO_BRK_BASE64 = 'data:image/png;base64,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';
 
         // Updated List of Products: RIZ, SUCRE, PATES, HUILE, COUSCOUS, SAVON, OMO, THÈ, JUMBO, HAMZA, GLORIA, CÉLIA, DATTE, SPAGUETTI, SARDINE, CÉLIA BÉBÉ
-        const DEFAULT_FOOD_PRODUCTS = [
-            { id: 'prod_1', ref: 'PRD-0001', name: 'RIZ', category: 'Alimentation / Épicerie', priceBuy: 4.50, priceSell: 6.50, qty: 25, minQty: 10, lastUpdated: new Date().toISOString() },
-            { id: 'prod_2', ref: 'PRD-0002', name: 'SUCRE', category: 'Alimentation / Épicerie', priceBuy: 0.80, priceSell: 1.20, qty: 40, minQty: 10, lastUpdated: new Date().toISOString() },
-            { id: 'prod_3', ref: 'PRD-0003', name: 'PATES', category: 'Alimentation / Épicerie', priceBuy: 0.65, priceSell: 0.95, qty: 50, minQty: 15, lastUpdated: new Date().toISOString() },
-            { id: 'prod_4', ref: 'PRD-0004', name: 'HUILE', category: 'Huiles & Condiments', priceBuy: 2.00, priceSell: 2.80, qty: 3, minQty: 10, lastUpdated: new Date().toISOString() },
-            { id: 'prod_5', ref: 'PRD-0005', name: 'COUSCOUS', category: 'Alimentation / Épicerie', priceBuy: 1.00, priceSell: 1.50, qty: 18, minQty: 5, lastUpdated: new Date().toISOString() },
-            { id: 'prod_6', ref: 'PRD-0006', name: 'SAVON', category: 'Hygiène & Entretien', priceBuy: 0.50, priceSell: 0.80, qty: 30, minQty: 8, lastUpdated: new Date().toISOString() },
-            { id: 'prod_7', ref: 'PRD-0007', name: 'OMO', category: 'Hygiène & Entretien', priceBuy: 3.20, priceSell: 4.50, qty: 2, minQty: 5, lastUpdated: new Date().toISOString() },
-            { id: 'prod_8', ref: 'PRD-0008', name: 'THÈ', category: 'Boissons & Épicerie', priceBuy: 1.50, priceSell: 2.20, qty: 22, minQty: 6, lastUpdated: new Date().toISOString() },
-            { id: 'prod_9', ref: 'PRD-0009', name: 'JUMBO', category: 'Condiments & Épices', priceBuy: 2.10, priceSell: 3.00, qty: 35, minQty: 10, lastUpdated: new Date().toISOString() },
-            { id: 'prod_10', ref: 'PRD-0010', name: 'HAMZA', category: 'Alimentation / Épicerie', priceBuy: 1.25, priceSell: 1.80, qty: 12, minQty: 4, lastUpdated: new Date().toISOString() },
-            { id: 'prod_11', ref: 'PRD-0011', name: 'GLORIA', category: 'Produits Laitiers', priceBuy: 1.10, priceSell: 1.60, qty: 0, minQty: 6, lastUpdated: new Date().toISOString() },
-            { id: 'prod_12', ref: 'PRD-0012', name: 'CÉLIA', category: 'Produits Laitiers', priceBuy: 3.30, priceSell: 4.80, qty: 14, minQty: 4, lastUpdated: new Date().toISOString() },
-            { id: 'prod_13', ref: 'PRD-0013', name: 'DATTE', category: 'Fruits & Dattes', priceBuy: 3.50, priceSell: 5.00, qty: 20, minQty: 5, lastUpdated: new Date().toISOString() },
-            { id: 'prod_14', ref: 'PRD-0014', name: 'SPAGUETTI', category: 'Alimentation / Épicerie', priceBuy: 0.60, priceSell: 0.90, qty: 45, minQty: 12, lastUpdated: new Date().toISOString() },
-            { id: 'prod_15', ref: 'PRD-0015', name: 'SARDINE', category: 'Conserves', priceBuy: 0.75, priceSell: 1.10, qty: 28, minQty: 8, lastUpdated: new Date().toISOString() },
-            { id: 'prod_16', ref: 'PRD-0016', name: 'CÉLIA BÉBÉ', category: 'Nutrition Infantile', priceBuy: 10.00, priceSell: 14.50, qty: 2, minQty: 4, lastUpdated: new Date().toISOString() }
-        ];
-
-        const DEFAULT_SUPPLIERS = [
-            { id: 'sup_1', name: 'Grossiste Ndiaye & Fils', phone: '+22245220011', notes: 'Livraison sous 48h, spécialiste épicerie' },
-            { id: 'sup_2', name: 'Import Sahel Distribution', phone: '+22246113355', notes: 'Produits laitiers et nutrition infantile' }
-        ];
-
-        const DEFAULT_CLIENTS = [
-            { id: 'cli_1', nom: 'Sy', prenom: 'Oumar', lieu: 'Nouakchott', phone: '+22245220011', notes: 'Client régulier' },
-            { id: 'cli_2', nom: 'Ba', prenom: 'Aicha', lieu: 'Nouakchott', phone: '', notes: '' }
-        ];
-
-        const DEFAULT_ORDERS = [
-            {
-                id: 'ord_1',
-                clientId: 'cli_1',
-                clientName: 'Oumar Sy',
-                items: [
-                    { productId: 'prod_1', name: 'RIZ', qty: 2, priceSell: 6.50 },
-                    { productId: 'prod_2', name: 'SUCRE', qty: 1, priceSell: 1.20 }
-                ],
-                total: 14.20,
-                amountPaid: 14.20,
-                status: 'Payé',
-                paymentMethod: 'Cash',
-                date: new Date().toISOString().split('T')[0],
-                createdAt: new Date().toISOString()
-            }
-        ];
+        // Aucune donnée de démonstration (produits, fournisseurs, clients, commandes) n'est
+        // intégrée dans l'appli : un nouvel appareil sans Google Sheet connecté démarre avec
+        // une base entièrement vide, prête à recevoir de vraies données dès le premier ajout.
+        const DEFAULT_FOOD_PRODUCTS = [];
+        const DEFAULT_SUPPLIERS = [];
+        const DEFAULT_CLIENTS = [];
+        const DEFAULT_ORDERS = [];
 
         const DEFAULT_USERS = [
             { id: 'user_admin', username: 'admin', password: 'admin123', role: 'admin', createdAt: new Date().toISOString() }
@@ -1845,9 +1798,41 @@
 
             // La page Documents charge son contenu (dossier Drive) à la demande, à chaque
             // ouverture de l'onglet, en repartant du dossier racine configuré dans Réglages.
+            // Son actualisation automatique en arrière-plan (voir startDriveAutoRefresh) ne
+            // doit tourner QUE pendant qu'elle est affichée : on l'arrête dès qu'on la quitte.
             if (tabId === 'documents') {
                 openDocumentsPage();
+            } else {
+                stopDriveAutoRefresh();
             }
+
+            // Actualisation automatique des données (Google Sheet) à chaque changement de page,
+            // pour ne plus jamais avoir besoin de recharger manuellement — sauf sur Réglages ou
+            // Déclaration Dépense/Perte (formulaires en cours de saisie potentiellement ouverts)
+            // ou si une fenêtre modale est affichée, pour ne jamais écraser une saisie en cours.
+            if (isAutoRefreshSafe()) {
+                reconnectToSheetIfNeeded();
+            }
+        }
+
+        // Une fenêtre modale (ajout/édition produit, fournisseur, client, commande...) est-elle
+        // actuellement ouverte ? Toutes partagent la classe "modal-backdrop" sur leur conteneur.
+        function isAnyModalOpen() {
+            return Array.from(document.querySelectorAll('.modal-backdrop')).some(el => !el.classList.contains('hidden'));
+        }
+
+        // L'actualisation automatique des données ne doit jamais interrompre une saisie en
+        // cours : elle est désactivée pendant qu'une modale est ouverte, ou sur les pages
+        // Réglages / Déclaration Dépense-Perte qui contiennent un formulaire directement dans
+        // la page (pas dans une modale) et seraient donc réinitialisées en plein milieu d'une
+        // saisie sans cette protection.
+        function isAutoRefreshSafe() {
+            if (isAnyModalOpen()) return false;
+            const settingsTab = document.getElementById('tab-settings');
+            const declarationsTab = document.getElementById('tab-declarations');
+            if (settingsTab && !settingsTab.classList.contains('hidden')) return false;
+            if (declarationsTab && !declarationsTab.classList.contains('hidden')) return false;
+            return true;
         }
 
         // ==================== DOCUMENTS (Google Drive, lecture seule) ====================
@@ -1859,11 +1844,33 @@
         let driveCurrentFolderId = null;
         let driveCurrentFolders = []; // dernière liste de sous-dossiers chargée (pour la recherche locale)
         let driveCurrentFiles = [];   // dernière liste de fichiers chargée (pour la recherche locale)
+        let driveAutoRefreshTimer = null;
+
+        // Actualisation automatique de la page Documents : plus besoin de cliquer sur
+        // "Actualiser" pour voir un fichier ajouté depuis Drive directement (par un autre
+        // appareil, ou vous-même via l'interface Google Drive). Tourne UNIQUEMENT pendant que
+        // l'onglet Documents est affiché, en silence (pas de spinner plein écran, la recherche
+        // en cours n'est jamais effacée), et s'arrête dès qu'on quitte l'onglet ou qu'on se
+        // déconnecte, pour ne jamais solliciter l'API en arrière-plan pour rien.
+        function startDriveAutoRefresh() {
+            stopDriveAutoRefresh();
+            driveAutoRefreshTimer = setInterval(() => {
+                if (driveCurrentFolderId) loadDriveFolder(driveCurrentFolderId, false, true);
+            }, 20000);
+        }
+
+        function stopDriveAutoRefresh() {
+            if (driveAutoRefreshTimer) {
+                clearInterval(driveAutoRefreshTimer);
+                driveAutoRefreshTimer = null;
+            }
+        }
 
         function openDocumentsPage() {
             driveBreadcrumb = [];
             driveCurrentFolderId = null;
             loadDriveFolder(null, true);
+            startDriveAutoRefresh();
         }
 
         function renderDriveBreadcrumb() {
@@ -1910,24 +1917,28 @@
             `;
         }
 
-        async function loadDriveFolder(folderId, isInitial) {
+        async function loadDriveFolder(folderId, isInitial, silent) {
             const contentEl = document.getElementById('documents-content');
             if (!contentEl) return;
             const sheetUrl = AppState.settings.sheetUrl;
             if (!sheetUrl) {
-                contentEl.innerHTML = documentsMessageHtml(
-                    'fa-plug-circle-xmark',
-                    'Aucune base de données connectée',
-                    "Configurez d'abord l'URL Google Apps Script dans Réglages pour utiliser la page Documents."
-                );
+                if (!silent) {
+                    contentEl.innerHTML = documentsMessageHtml(
+                        'fa-plug-circle-xmark',
+                        'Aucune base de données connectée',
+                        "Configurez d'abord l'URL Google Apps Script dans Réglages pour utiliser la page Documents."
+                    );
+                }
                 return;
             }
-            contentEl.innerHTML = `
-                <div class="bg-white p-10 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
-                    <i class="fa-solid fa-circle-notch fa-spin text-2xl text-emerald-600"></i>
-                    <p class="text-sm text-slate-500 font-medium">Chargement du dossier...</p>
-                </div>
-            `;
+            if (!silent) {
+                contentEl.innerHTML = `
+                    <div class="bg-white p-10 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
+                        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-emerald-600"></i>
+                        <p class="text-sm text-slate-500 font-medium">Chargement du dossier...</p>
+                    </div>
+                `;
+            }
             try {
                 const qsFolder = folderId ? `&folderId=${encodeURIComponent(folderId)}` : '';
                 const res = await fetch(`${sheetUrl}?action=listDriveFolder${qsFolder}`, { method: 'GET' });
@@ -1946,10 +1957,20 @@
                 renderDriveBreadcrumb();
                 driveCurrentFolders = json.folders || [];
                 driveCurrentFiles = json.files || [];
-                const searchInput = document.getElementById('documents-search-input');
-                if (searchInput) searchInput.value = '';
-                renderDriveFolderContent(driveCurrentFolders, driveCurrentFiles);
+                if (silent) {
+                    // Actualisation automatique en arrière-plan : on garde le texte de recherche
+                    // déjà saisi par l'utilisateur, on ne l'efface jamais tout seul.
+                    filterDriveFolderContent();
+                } else {
+                    const searchInput = document.getElementById('documents-search-input');
+                    if (searchInput) searchInput.value = '';
+                    renderDriveFolderContent(driveCurrentFolders, driveCurrentFiles);
+                }
             } catch (err) {
+                if (silent) {
+                    console.warn('Actualisation automatique Documents échouée (nouvelle tentative dans 20s):', err);
+                    return;
+                }
                 console.error('Erreur Documents (Drive):', err);
                 contentEl.innerHTML = documentsMessageHtml(
                     'fa-triangle-exclamation',
@@ -5048,6 +5069,7 @@
 
         function handleLogout(reason) {
             currentUser = null;
+            stopDriveAutoRefresh();
             localStorage.removeItem('stock_wa_current_username');
             setAppVisible(false);
             document.getElementById('login-screen').classList.remove('hidden');
@@ -5906,14 +5928,6 @@
             downloadAnchor.remove();
         }
 
-        function resetDefaultProducts() {
-            if(confirm('Voulez-vous réinitialiser tous les produits avec la nouvelle liste (RIZ, SUCRE, PATES, HUILE, COUSCOUS, SAVON, OMO, THÈ, JUMBO, HAMZA, GLORIA, CÉLIA, DATTE, SPAGUETTI, SARDINE, CÉLIA BÉBÉ) ?')) {
-                AppState.products = DEFAULT_FOOD_PRODUCTS;
-                saveAppState();
-                showToast('Catalogue des produits mis à jour !');
-            }
-        }
-
         // --- Modal Helpers ---
         function openModal(id) {
             document.getElementById(id).classList.remove('hidden');
@@ -5979,18 +5993,20 @@
 
         // Revalide la connexion des que l'app redevient visible (retour sur l'onglet, deverrouillage...)
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible' && isAutoRefreshSafe()) {
                 reconnectToSheetIfNeeded();
             }
         });
 
-        // Filet de securite : verifie aussi la connexion toutes les 5 minutes tant que l'onglet
-        // reste ouvert et visible, au cas ou le reseau aurait ete coupe sans mise en arriere-plan.
+        // Actualisation automatique periodique : toutes les 20 secondes tant que l'onglet reste
+        // ouvert et visible (et qu'aucune saisie en cours ne pourrait etre ecrasee), pour que
+        // TOUTES les pages de l'appli restent a jour toutes seules, sans jamais avoir besoin de
+        // recharger manuellement — meme cadence que l'actualisation de la page Documents.
         setInterval(() => {
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible' && isAutoRefreshSafe()) {
                 reconnectToSheetIfNeeded();
             }
-        }, 5 * 60 * 1000);
+        }, 20000);
     </script>
 </body>
 </html>
