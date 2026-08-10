@@ -2702,6 +2702,9 @@
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2.5 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
                             </button>
+                            <button onclick="generateProductOrdersPDF('${p.id}')" title="Historique des commandes (PDF)" class="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-2.5 rounded-lg transition-colors">
+                                <i class="fa-solid fa-file-pdf text-sm"></i>
+                            </button>
                             <button onclick="deleteProduct('${p.id}')" title="Supprimer" class="agent-restricted text-slate-400 hover:text-rose-600 p-2.5 rounded-lg transition-colors">
                                 <i class="fa-solid fa-trash-can text-sm"></i>
                             </button>
@@ -2756,6 +2759,9 @@
                             </button>
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
+                            </button>
+                            <button onclick="generateProductOrdersPDF('${p.id}')" title="Historique des commandes (PDF)" class="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-2 rounded-lg transition-colors">
+                                <i class="fa-solid fa-file-pdf text-sm"></i>
                             </button>
                             <button onclick="deleteProduct('${p.id}')" title="Supprimer" class="agent-restricted text-slate-400 hover:text-rose-600 p-2 rounded-lg transition-colors">
                                 <i class="fa-solid fa-trash-can text-sm"></i>
@@ -2894,7 +2900,7 @@
                     return `
                         <div class="border border-slate-200 rounded-xl p-3.5 space-y-2">
                             <div class="flex items-center justify-between">
-                                <span class="text-xs font-semibold text-slate-500">${o.date}</span>
+                                <span class="text-xs font-semibold text-slate-500">${formatShortDate_(o.date)}</span>
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${statusStyles[o.status] || 'bg-slate-100 text-slate-700'}">${o.status === 'Partiel' ? 'Partiellement payé' : o.status}</span>
                             </div>
                             <p class="text-xs text-slate-700">${itemsSummary}</p>
@@ -3520,7 +3526,7 @@
             const remaining = Math.max(0, Number(order.total) - amountPaid);
             const beneficiaryName = `${order.beneficiaryPrenom || ''} ${order.beneficiaryNom || ''}`.trim();
             const beneficiaryLine = beneficiaryName ? `Bénéficiaire: ${beneficiaryName}\n` : '';
-            const msg = `Bonjour ${client.prenom || ''},\nVoici le récapitulatif de votre commande du ${order.date} :\n${beneficiaryLine}${itemsText}\nTotal: ${Number(order.total).toFixed(2)} UM\nPayé: ${amountPaid.toFixed(2)} UM | Reste: ${remaining.toFixed(2)} UM\nStatut: ${order.status}\nMerci de votre confiance !`;
+            const msg = `Bonjour ${client.prenom || ''},\nVoici le récapitulatif de votre commande du ${formatShortDate_(order.date)} :\n${beneficiaryLine}${itemsText}\nTotal: ${Number(order.total).toFixed(2)} UM\nPayé: ${amountPaid.toFixed(2)} UM | Reste: ${remaining.toFixed(2)} UM\nStatut: ${order.status}\nMerci de votre confiance !`;
 
             const waUrl = `https://wa.me/${String(client.phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`;
             window.open(waUrl, '_blank');
@@ -3554,7 +3560,7 @@
 
             doc.setFontSize(10);
             doc.text(`N° Commande: ${order.id}`, 14, 38);
-            doc.text(`Date: ${order.date}`, 14, 44);
+            doc.text(`Date: ${formatShortDate_(order.date)}`, 14, 44);
             doc.text(`Client: ${order.clientName}`, 14, 50);
             if (client && client.lieu) doc.text(`Lieu: ${client.lieu}`, 14, 56);
             if (client && client.phone) doc.text(`Téléphone: ${client.phone}`, 14, 62);
@@ -3646,7 +3652,7 @@
                 doc.setTextColor(0);
             }
 
-            const pdfFileName = `Commande_${(order.clientName || 'client').replace(/\s+/g, '_')}_${order.date}.pdf`;
+            const pdfFileName = `Commande_${(order.clientName || 'client').replace(/\s+/g, '_')}_${String(order.date || '').slice(0, 10)}.pdf`;
             doc.save(pdfFileName);
             showToast('Facture PDF téléchargée !');
 
@@ -3793,7 +3799,7 @@
                                 <h3 class="font-bold text-slate-900 text-base">${o.clientName}</h3>
                                 ${beneficiaryName ? `<p class="text-xs text-slate-500 flex items-center space-x-1 mt-0.5"><i class="fa-solid fa-user-check text-slate-400"></i><span>Bénéficiaire : ${beneficiaryName}</span></p>` : ''}
                                 <p class="text-xs text-slate-500 mt-0.5 flex items-center space-x-1.5">
-                                    <span>${o.date}</span>
+                                    <span>${formatShortDate_(o.date)}</span>
                                     <span class="inline-flex items-center space-x-1 text-slate-400">
                                         <i class="fa-solid ${paymentIcon}"></i>
                                         <span>${o.paymentMethod || 'Cash'}</span>
@@ -4057,7 +4063,7 @@
                                     <tbody class="divide-y divide-slate-100">
                                         ${orders.map(o => `
                                             <tr>
-                                                <td class="py-2 pr-3 text-slate-500">${o.date || ''}</td>
+                                                <td class="py-2 pr-3 text-slate-500">${formatShortDate_(o.date)}</td>
                                                 <td class="py-2 pr-3 font-semibold text-slate-800">${o.clientName || ''}</td>
                                                 <td class="py-2 pr-3 font-semibold text-slate-700">${Number(o.total || 0).toFixed(2)} UM</td>
                                                 <td class="py-2 pr-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${statusStyles[o.status] || ''}">${o.status}</span></td>
@@ -4105,7 +4111,7 @@
                                             const remaining = (Number(o.total) || 0) - (Number(o.amountPaid) || 0);
                                             return `
                                                 <tr class="${days > 30 ? 'bg-rose-50/50' : ''}">
-                                                    <td class="py-2 pr-3 text-slate-500">${o.date || ''}</td>
+                                                    <td class="py-2 pr-3 text-slate-500">${formatShortDate_(o.date)}</td>
                                                     <td class="py-2 pr-3 font-semibold text-slate-800">${o.clientName || ''}</td>
                                                     <td class="py-2 pr-3 text-slate-700">${Number(o.total || 0).toFixed(2)} UM</td>
                                                     <td class="py-2 pr-3 text-slate-700">${Number(o.amountPaid || 0).toFixed(2)} UM</td>
@@ -4376,7 +4382,7 @@
                                     <tbody class="divide-y divide-slate-100">
                                         ${entries.map(e => {
                                             const isLoss = e.kind === 'loss';
-                                            const dateStr = formatDeclDate_(e.date);
+                                            const dateStr = formatShortDate_(e.date);
                                             const typeLabel = isLoss ? 'Perte produit' : 'Dépense';
                                             const detail = isLoss ? `${e.productName} (${e.cause}) × ${e.qty}` : (e.category || '-');
                                             return `<tr><td class="py-2 pr-3 text-slate-500">${dateStr}</td><td class="py-2 pr-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLoss ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'}">${typeLabel}</span></td><td class="py-2 pr-3 font-semibold text-slate-800">${detail}</td><td class="py-2 pr-3 font-bold ${isLoss ? 'text-rose-600' : 'text-slate-800'}">${Number(e.amount || 0).toFixed(2)} UM</td></tr>`;
@@ -4886,14 +4892,16 @@
             showToast('Déclaration supprimée' + (entry.kind === 'loss' ? ' — stock restauré' : ''));
         }
 
-        // Formate une date de déclaration ("YYYY-MM-DD" saisi localement) en toute robustesse.
-        // Google Sheets convertit parfois automatiquement une cellule "YYYY-MM-DD" en véritable
-        // objet Date, qui revient alors côté appli sous forme d'horodatage ISO complet (ex.
-        // "2026-08-09T00:00:00.000Z"). Ajouter "T00:00:00" à une valeur déjà complète produisait
-        // une chaîne invalide ("...000ZT00:00:00") et donc "Invalid Date" à l'affichage — d'où la
-        // détection ci-dessous du format déjà complet ("T" présent) avant de décider s'il faut
-        // compléter ou non.
-        function formatDeclDate_(rawDate) {
+        // Formate une date ("YYYY-MM-DD" saisie localement) en toute robustesse — utilisé pour
+        // les dates de commandes ET de déclarations. Google Sheets convertit parfois
+        // automatiquement une cellule "YYYY-MM-DD" en véritable objet Date, qui revient alors
+        // côté appli sous forme d'horodatage ISO complet (ex. "2026-08-09T22:00:00.000Z").
+        // Afficher cette valeur brute telle quelle (ou lui ajouter "T00:00:00" sans vérifier)
+        // produit soit un texte bien trop long qui chevauche le reste de la mise en page (PDF,
+        // cartes de commande...), soit carrément "Invalid Date" — d'où la détection ci-dessous
+        // du format déjà complet ("T" présent) avant de décider s'il faut compléter ou non, et le
+        // passage systématique par un format court JJ/MM/AAAA.
+        function formatShortDate_(rawDate) {
             if (!rawDate) return '';
             const str = String(rawDate);
             const d = str.includes('T') ? new Date(str) : new Date(str + 'T00:00:00');
@@ -4927,7 +4935,7 @@
                 const iconBg = isLoss ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600';
                 const icon = isLoss ? (causeIcons[e.cause] || 'fa-box-open') : 'fa-file-invoice-dollar';
                 const title = isLoss ? `${e.productName} (${e.cause}) × ${e.qty}` : (e.category || 'Dépense');
-                const dateStr = formatDeclDate_(e.date);
+                const dateStr = formatShortDate_(e.date);
                 const authorStr = e.createdBy ? ` · Par ${e.createdBy}` : '';
                 const fileBtn = (e.driveFileId || e.fileData) ? `<button onclick="viewDeclarationFile('${e.id}')" title="Voir la pièce jointe" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : '';
                 return `
@@ -5658,6 +5666,101 @@
                 saveAppState();
                 showToast('Produit supprimé');
             }
+        }
+
+        // Génère un PDF listant l'historique de toutes les commandes ayant inclus ce produit
+        // (date, client, quantité, prix unitaire, total ligne, statut de la commande), avec un
+        // récapitulatif (quantité totale vendue, chiffre d'affaires total généré par ce produit).
+        function generateProductOrdersPDF(productId) {
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showToast('Le générateur PDF n\'a pas pu se charger (vérifie ta connexion internet)', 'warning');
+                return;
+            }
+            const product = AppState.products.find(p => p.id === productId);
+            if (!product) return;
+
+            // Chaque commande peut contenir plusieurs lignes (produits) : on extrait uniquement
+            // la/les ligne(s) qui concernent ce produit précis, avec la commande parente associée.
+            const rows = [];
+            AppState.orders.forEach(o => {
+                (o.items || []).forEach(it => {
+                    if (it.productId === productId) {
+                        rows.push({ order: o, item: it });
+                    }
+                });
+            });
+
+            if (rows.length === 0) {
+                showToast(`Aucune commande ne contient "${product.name}" pour le moment`, 'warning');
+                return;
+            }
+
+            // Les commandes les plus récentes en premier, comme partout ailleurs dans l'appli.
+            rows.sort((a, b) => new Date(b.order.createdAt || b.order.date) - new Date(a.order.createdAt || a.order.date));
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            try { doc.addImage(LOGO_BRK_BASE64, 'PNG', 172, 10, 24, 20.8); } catch (err) { console.warn('Logo PDF non ajouté:', err); }
+
+            doc.setFontSize(18);
+            doc.setFont(undefined, 'bold');
+            doc.text('Historique des commandes', 14, 20);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(120);
+            doc.text('Boutique B.R.K — Montants en Ouguiya (UM)', 14, 26);
+            doc.setTextColor(0);
+
+            doc.setFontSize(10);
+            doc.text(`Produit : ${product.name}${product.ref ? ' (' + product.ref + ')' : ''}`, 14, 38);
+            if (product.category) doc.text(`Catégorie : ${product.category}`, 14, 44);
+            doc.text(`Généré le : ${new Date().toLocaleString('fr-FR')}`, 14, 50);
+
+            let y = 62;
+            doc.setDrawColor(200);
+            doc.setFont(undefined, 'bold');
+            doc.text('Date', 14, y);
+            doc.text('Client', 44, y);
+            doc.text('Qté', 118, y);
+            doc.text('P.U.', 138, y);
+            doc.text('Total', 160, y);
+            doc.text('Statut', 178, y);
+            doc.setFont(undefined, 'normal');
+            y += 3;
+            doc.line(14, y, 196, y);
+            y += 7;
+
+            let totalQty = 0;
+            let totalRevenue = 0;
+            doc.setFontSize(9);
+            rows.forEach(({ order, item }) => {
+                if (y > 270) { doc.addPage(); y = 20; }
+                const lineTotal = (Number(item.qty) || 0) * (Number(item.priceSell) || 0);
+                totalQty += Number(item.qty) || 0;
+                totalRevenue += lineTotal;
+                doc.text(formatShortDate_(order.date) || '-', 14, y);
+                doc.text(String(order.clientName || '-').slice(0, 22), 44, y);
+                doc.text(String(item.qty), 118, y);
+                doc.text(Number(item.priceSell || 0).toFixed(2), 138, y);
+                doc.text(lineTotal.toFixed(2), 160, y);
+                doc.text(String(order.status || '-'), 178, y);
+                y += 7;
+            });
+
+            y += 3;
+            doc.line(14, y, 196, y);
+            y += 10;
+
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text(`Quantité totale vendue : ${totalQty}`, 14, y);
+            y += 7;
+            doc.text(`Chiffre d'affaires généré : ${totalRevenue.toFixed(2)} UM`, 14, y);
+            doc.setFont(undefined, 'normal');
+
+            doc.save(`Historique_Commandes_${product.name.replace(/\s+/g, '_')}.pdf`);
+            showToast('Historique des commandes téléchargé !');
         }
 
         // Ouvre le fichier joint d'un produit dans un nouvel onglet (image ou PDF encodé en base64)
