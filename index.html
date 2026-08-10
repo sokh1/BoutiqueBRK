@@ -5690,13 +5690,17 @@
                 });
             });
 
-            if (rows.length === 0) {
-                showToast(`Aucune commande ne contient "${product.name}" pour le moment`, 'warning');
+            // Quantités déclarées comme perdues (Déclaration Dépense/Perte) pour ce même produit.
+            const lossRows = (AppState.expenses || []).filter(e => e.kind === 'loss' && e.productId === productId);
+
+            if (rows.length === 0 && lossRows.length === 0) {
+                showToast(`Aucune commande ni perte déclarée pour "${product.name}" pour le moment`, 'warning');
                 return;
             }
 
-            // Les commandes les plus récentes en premier, comme partout ailleurs dans l'appli.
+            // Les commandes/pertes les plus récentes en premier, comme partout ailleurs dans l'appli.
             rows.sort((a, b) => new Date(b.order.createdAt || b.order.date) - new Date(a.order.createdAt || a.order.date));
+            lossRows.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
@@ -5705,7 +5709,7 @@
 
             doc.setFontSize(18);
             doc.setFont(undefined, 'bold');
-            doc.text('Historique des commandes', 14, 20);
+            doc.text('Historique du produit', 14, 20);
             doc.setFont(undefined, 'normal');
             doc.setFontSize(9);
             doc.setTextColor(120);
@@ -5718,46 +5722,112 @@
             doc.text(`Généré le : ${new Date().toLocaleString('fr-FR')}`, 14, 50);
 
             let y = 62;
-            doc.setDrawColor(200);
-            doc.setFont(undefined, 'bold');
-            doc.text('Date', 14, y);
-            doc.text('Client', 44, y);
-            doc.text('Qté', 118, y);
-            doc.text('P.U.', 138, y);
-            doc.text('Total', 160, y);
-            doc.text('Statut', 178, y);
-            doc.setFont(undefined, 'normal');
-            y += 3;
-            doc.line(14, y, 196, y);
-            y += 7;
-
             let totalQty = 0;
             let totalRevenue = 0;
-            doc.setFontSize(9);
-            rows.forEach(({ order, item }) => {
-                if (y > 270) { doc.addPage(); y = 20; }
-                const lineTotal = (Number(item.qty) || 0) * (Number(item.priceSell) || 0);
-                totalQty += Number(item.qty) || 0;
-                totalRevenue += lineTotal;
-                doc.text(formatShortDate_(order.date) || '-', 14, y);
-                doc.text(String(order.clientName || '-').slice(0, 22), 44, y);
-                doc.text(String(item.qty), 118, y);
-                doc.text(Number(item.priceSell || 0).toFixed(2), 138, y);
-                doc.text(lineTotal.toFixed(2), 160, y);
-                doc.text(String(order.status || '-'), 178, y);
+
+            if (rows.length > 0) {
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Commandes', 14, y);
+                doc.setFont(undefined, 'normal');
+                y += 6;
+
+                doc.setDrawColor(200);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                doc.text('Date', 14, y);
+                doc.text('Client', 44, y);
+                doc.text('Qté', 118, y);
+                doc.text('P.U.', 138, y);
+                doc.text('Total', 160, y);
+                doc.text('Statut', 178, y);
+                doc.setFont(undefined, 'normal');
+                y += 3;
+                doc.line(14, y, 196, y);
                 y += 7;
-            });
 
-            y += 3;
-            doc.line(14, y, 196, y);
-            y += 10;
+                rows.forEach(({ order, item }) => {
+                    if (y > 270) { doc.addPage(); y = 20; }
+                    const lineTotal = (Number(item.qty) || 0) * (Number(item.priceSell) || 0);
+                    totalQty += Number(item.qty) || 0;
+                    totalRevenue += lineTotal;
+                    doc.text(formatShortDate_(order.date) || '-', 14, y);
+                    doc.text(String(order.clientName || '-').slice(0, 22), 44, y);
+                    doc.text(String(item.qty), 118, y);
+                    doc.text(Number(item.priceSell || 0).toFixed(2), 138, y);
+                    doc.text(lineTotal.toFixed(2), 160, y);
+                    doc.text(String(order.status || '-'), 178, y);
+                    y += 7;
+                });
 
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'bold');
-            doc.text(`Quantité totale vendue : ${totalQty}`, 14, y);
-            y += 7;
-            doc.text(`Chiffre d'affaires généré : ${totalRevenue.toFixed(2)} UM`, 14, y);
-            doc.setFont(undefined, 'normal');
+                y += 3;
+                doc.line(14, y, 196, y);
+                y += 10;
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Quantité totale vendue : ${totalQty}`, 14, y);
+                y += 7;
+                doc.text(`Chiffre d'affaires généré : ${totalRevenue.toFixed(2)} UM`, 14, y);
+                doc.setFont(undefined, 'normal');
+                y += 12;
+            }
+
+            // Pertes déclarées sur ce produit (Déclaration Dépense/Perte) : quantité, cause,
+            // montant de la perte, et montant éventuellement récupéré (prix réduit x quantité).
+            let totalLossQty = 0;
+            let totalLossAmount = 0;
+            let totalRecovered = 0;
+            if (lossRows.length > 0) {
+                if (y > 250) { doc.addPage(); y = 20; }
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Pertes déclarées', 14, y);
+                doc.setFont(undefined, 'normal');
+                y += 6;
+
+                doc.setDrawColor(200);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                doc.text('Date', 14, y);
+                doc.text('Cause', 44, y);
+                doc.text('Qté', 100, y);
+                doc.text('Perte', 122, y);
+                doc.text('Encaissé', 150, y);
+                doc.text('Par', 178, y);
+                doc.setFont(undefined, 'normal');
+                y += 3;
+                doc.line(14, y, 196, y);
+                y += 7;
+
+                lossRows.forEach(e => {
+                    if (y > 270) { doc.addPage(); y = 20; }
+                    const qty = Number(e.qty) || 0;
+                    const lossAmount = Number(e.amount) || 0;
+                    const recovered = (Number(e.newPrice) || 0) * qty;
+                    totalLossQty += qty;
+                    totalLossAmount += lossAmount;
+                    totalRecovered += recovered;
+                    doc.text(formatShortDate_(e.date) || '-', 14, y);
+                    doc.text(String(e.cause || '-').slice(0, 18), 44, y);
+                    doc.text(String(qty), 100, y);
+                    doc.text(lossAmount.toFixed(2), 122, y);
+                    doc.text(recovered.toFixed(2), 150, y);
+                    doc.text(String(e.createdBy || '-').slice(0, 12), 178, y);
+                    y += 7;
+                });
+
+                y += 3;
+                doc.line(14, y, 196, y);
+                y += 10;
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Quantité totale perdue : ${totalLossQty}`, 14, y);
+                y += 7;
+                doc.text(`Montant total des pertes : ${totalLossAmount.toFixed(2)} UM (dont encaissé : ${totalRecovered.toFixed(2)} UM)`, 14, y);
+                doc.setFont(undefined, 'normal');
+            }
 
             doc.save(`Historique_Commandes_${product.name.replace(/\s+/g, '_')}.pdf`);
             showToast('Historique des commandes téléchargé !');
