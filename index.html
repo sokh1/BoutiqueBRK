@@ -356,7 +356,7 @@
             </div>
 
             <!-- Résumé financier : impayés commandes/fournisseurs, encaissé sur pertes, trop perçu -->
-            <div class="agent-restricted grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+            <div class="agent-restricted grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                 <button type="button" onclick="switchTab('orders')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Impayés Commandes</span>
@@ -434,6 +434,38 @@
                     <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
                         <i class="fa-solid fa-rotate-left text-slate-400"></i>
                         <span>Statut "Trop perçu — à rembourser"</span>
+                    </div>
+                </button>
+
+                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Pertes</span>
+                        <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-losses-total" class="text-2xl font-extrabold text-rose-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-tag text-slate-400"></i>
+                        <span>Toutes déclarations de perte confondues</span>
+                    </div>
+                </button>
+
+                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Dépenses</span>
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-money-bill-wave"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-expenses-total" class="text-2xl font-extrabold text-amber-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-receipt text-slate-400"></i>
+                        <span>Toutes déclarations de dépense confondues</span>
                     </div>
                 </button>
             </div>
@@ -2541,6 +2573,20 @@
                 .reduce((sum, e) => sum + (Number(e.newPrice) || 0) * (Number(e.qty) || 0), 0);
             const kpiLossesEncaisseEl = document.getElementById('kpi-losses-encaisse-total');
             if (kpiLossesEncaisseEl) kpiLossesEncaisseEl.innerText = lossesEncaisseTotal.toFixed(2) + ' UM';
+
+            // Montants totaux des pertes et des dépenses déclarées (distincts de "Encaissé sur
+            // Pertes" ci-dessus, qui ne représente que la part récupérée sur les pertes).
+            const lossesTotalAmount = AppState.expenses
+                .filter(e => e.kind === 'loss')
+                .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+            const kpiLossesTotalEl = document.getElementById('kpi-losses-total');
+            if (kpiLossesTotalEl) kpiLossesTotalEl.innerText = lossesTotalAmount.toFixed(2) + ' UM';
+
+            const expensesTotalAmount = AppState.expenses
+                .filter(e => e.kind === 'expense')
+                .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+            const kpiExpensesTotalEl = document.getElementById('kpi-expenses-total');
+            if (kpiExpensesTotalEl) kpiExpensesTotalEl.innerText = expensesTotalAmount.toFixed(2) + ' UM';
 
             // Trop perçu à rendre aux clients (commandes au statut "Rendre au client")
             const ordersOverpaidTotal = AppState.orders.reduce((sum, o) => {
@@ -5964,6 +6010,18 @@
             const phone = document.getElementById('client-phone').value;
             const notes = document.getElementById('client-notes').value;
             const name = `${prenom} ${nom}`.trim();
+
+            // Bloque la création (ou le renommage) d'un client en doublon : même nom + prénom
+            // (comparaison insensible à la casse et aux espaces superflus) qu'un client déjà
+            // existant. On exclut le client en cours d'édition lui-même de cette vérification.
+            const normalizeName_ = (s) => (s || '').trim().toLowerCase();
+            const isDuplicateClient = AppState.clients.some(c =>
+                c.id !== id && normalizeName_(c.nom) === normalizeName_(nom) && normalizeName_(c.prenom) === normalizeName_(prenom)
+            );
+            if (isDuplicateClient) {
+                showToast(`Un client "${name}" existe déjà — vérifie la liste des clients avant d'en créer un nouveau`, 'warning');
+                return;
+            }
 
             const existingIdx = AppState.clients.findIndex(c => c.id === id);
             const createdAt = existingIdx >= 0 ? AppState.clients[existingIdx].createdAt : new Date().toISOString();
