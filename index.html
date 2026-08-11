@@ -2792,6 +2792,9 @@
                         </div>
 
                         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                            <button onclick="editProduct('${p.id}')" title="Modifier le produit (fournisseur, prix, catégorie... — quantité non modifiable ici)" class="agent-restricted text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg transition-colors">
+                                <i class="fa-solid fa-pen-to-square text-sm"></i>
+                            </button>
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2.5 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
                             </button>
@@ -2843,6 +2846,9 @@
                         <td class="py-3.5 px-4">${supplierHtml}</td>
                         <td class="py-3.5 px-4">${badgeHtml}</td>
                         <td class="py-3.5 px-4 text-right space-x-1 sm:space-x-2">
+                            <button onclick="editProduct('${p.id}')" title="Modifier le produit (fournisseur, prix, catégorie... — quantité non modifiable ici)" class="agent-restricted text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors">
+                                <i class="fa-solid fa-pen-to-square text-sm"></i>
+                            </button>
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
                             </button>
@@ -5513,7 +5519,14 @@
                 row.querySelector('.row-category').value = item.category || '';
                 row.querySelector('.row-price-buy').value = item.priceBuy;
                 row.querySelector('.row-price-sell').value = item.priceSell;
-                row.querySelector('.row-qty').value = item.qty;
+                const qtyInput = row.querySelector('.row-qty');
+                qtyInput.value = item.qty;
+                // La quantité ne se modifie plus depuis ce formulaire (uniquement via Commandes et
+                // Déclarations de perte/dépense) : en modification, le champ reste visible mais
+                // verrouillé. Sa valeur (inchangée) continue d'être lue/soumise normalement.
+                qtyInput.disabled = true;
+                qtyInput.title = 'Quantité non modifiable ici — gérée via Commandes / Déclarations';
+                qtyInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
                 row.querySelector('.row-minqty').value = item.minQty;
                 if (item.fileData) {
                     row.dataset.fileData = item.fileData;
