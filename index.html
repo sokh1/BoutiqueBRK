@@ -2774,11 +2774,7 @@
 
                         <div class="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
                             <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Quantité en stock</span>
-                            <div class="inline-flex items-center space-x-2 bg-white px-2 py-1 rounded-lg border border-slate-200">
-                                <button onclick="adjustQty('${p.id}', -1)" class="agent-restricted w-7 h-7 rounded bg-slate-50 shadow-xs text-slate-600 hover:bg-slate-200 font-bold">-</button>
-                                <span class="font-extrabold px-1 text-slate-900 text-sm">${p.qty}</span>
-                                <button onclick="adjustQty('${p.id}', 1)" class="agent-restricted w-7 h-7 rounded bg-slate-50 shadow-xs text-slate-600 hover:bg-slate-200 font-bold">+</button>
-                            </div>
+                            <span class="font-extrabold px-3 py-1 text-slate-900 text-sm bg-white rounded-lg border border-slate-200">${p.qty}</span>
                         </div>
 
                         <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
@@ -2796,9 +2792,6 @@
                         </div>
 
                         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-                            <button onclick="editProduct('${p.id}')" title="Modifier le produit" class="agent-restricted text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg transition-colors">
-                                <i class="fa-solid fa-pen-to-square text-sm"></i>
-                            </button>
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2.5 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
                             </button>
@@ -2841,11 +2834,7 @@
                         <td class="py-3.5 px-4 font-semibold text-slate-700">${Number(p.priceBuy || 0).toFixed(2)} UM</td>
                         <td class="py-3.5 px-4 font-semibold text-slate-700">${Number(p.priceSell || 0).toFixed(2)} UM</td>
                         <td class="py-3.5 px-4 text-center">
-                            <div class="inline-flex items-center space-x-2 bg-slate-100 px-2 py-1 rounded-lg">
-                                <button onclick="adjustQty('${p.id}', -1)" class="agent-restricted w-6 h-6 rounded bg-white shadow-xs text-slate-600 hover:bg-slate-200 font-bold">-</button>
-                                <span class="font-extrabold px-1 text-slate-900 text-sm">${p.qty}</span>
-                                <button onclick="adjustQty('${p.id}', 1)" class="agent-restricted w-6 h-6 rounded bg-white shadow-xs text-slate-600 hover:bg-slate-200 font-bold">+</button>
-                            </div>
+                            <span class="font-extrabold px-2.5 py-1 text-slate-900 text-sm bg-slate-100 rounded-lg">${p.qty}</span>
                         </td>
                         <td class="py-3.5 px-4 font-semibold text-slate-700">${totalAchat.toFixed(2)} UM</td>
                         <td class="py-3.5 px-4 font-semibold text-slate-700">${totalVente.toFixed(2)} UM</td>
@@ -2854,9 +2843,6 @@
                         <td class="py-3.5 px-4">${supplierHtml}</td>
                         <td class="py-3.5 px-4">${badgeHtml}</td>
                         <td class="py-3.5 px-4 text-right space-x-1 sm:space-x-2">
-                            <button onclick="editProduct('${p.id}')" title="Modifier le produit" class="agent-restricted text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors">
-                                <i class="fa-solid fa-pen-to-square text-sm"></i>
-                            </button>
                             <button onclick="sendWaStockAlert('${p.id}')" title="Envoyer alerte WhatsApp" class="text-wa-green hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors">
                                 <i class="fa-brands fa-whatsapp text-base"></i>
                             </button>
@@ -5637,31 +5623,6 @@
             if (container.querySelectorAll('.product-row').length <= 1) return;
             btn.closest('.product-row').remove();
             updateRemoveRowButtons();
-        }
-
-        function adjustQty(productId, delta) {
-            // Garde-fou : un Agent ne doit pas pouvoir modifier la quantité en stock
-            // (le bouton est masqué, mais on bloque aussi l'appel direct par sécurité).
-            if (currentUser && currentUser.role === 'agent') return;
-            const item = AppState.products.find(p => p.id === productId);
-            if(item) {
-                item.qty = Math.max(0, item.qty + delta);
-                item.lastUpdated = new Date().toISOString();
-                // Le +/- de la page Stock est une correction manuelle de quantité (comme l'édition
-                // du produit) : on répercute donc aussitôt sur purchaseQty/supplierLastUpdated pour
-                // que le "Total Achat" et le nom (avec quantité) côté Fournisseurs se mettent à jour
-                // avec. Seules les commandes et déclarations de perte restent SANS effet sur ces deux
-                // champs (elles ne touchent que le stock courant, pas ce qui a été acheté).
-                item.purchaseQty = item.qty;
-                item.supplierLastUpdated = new Date().toISOString();
-                showToast(`Stock mis à jour pour ${item.name} (${item.qty})`);
-
-                // Check auto-alert
-                if(AppState.settings.autoAlerts && item.qty <= item.minQty) {
-                    sendWaStockAlert(item.id, true);
-                }
-                saveAppState();
-            }
         }
 
         // Calcule la référence produit visible suivante (PRD-0001, PRD-0002...)
