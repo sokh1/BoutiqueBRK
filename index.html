@@ -1655,6 +1655,17 @@
         // ==================== SYNCHRONISATION GOOGLE SHEETS ====================
         let sheetSyncTimer = null;
         let sheetSyncInFlight = false;
+        // Promesse de l'appel syncToSheet() actuellement en cours, le cas échéant : permet à
+        // plusieurs appelants de se raccrocher au MÊME envoi réseau au lieu d'en déclencher un
+        // second en parallèle (ils enverraient de toute façon le même AppState).
+        let sheetSyncPromise = null;
+        // Vrai dès qu'une modification locale est programmée pour synchronisation (scheduleSheetSync),
+        // et jusqu'à ce qu'elle soit confirmée envoyée au Sheet avec succès. Sert à empêcher une
+        // actualisation en arrière-plan (toutes les 20s, changement d'onglet, retour sur l'app...)
+        // d'écraser un changement pas encore parti vers le Sheet avec les anciennes données lues —
+        // sans ce garde-fou, un versement/une modification tout juste enregistré(e) peut sembler
+        // "non pris en compte" et disparaître jusqu'à ce qu'on le ressaisisse une seconde fois.
+        let hasPendingLocalChanges = false;
 
         function saveAppState() {
             localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
@@ -1679,6 +1690,7 @@
                 setSyncStatus('Stockage local uniquement', 'warning');
                 return;
             }
+            hasPendingLocalChanges = true;
             clearTimeout(sheetSyncTimer);
             setSyncStatus('Synchronisation...', 'warning');
             sheetSyncTimer = setTimeout(syncToSheet, 600);
@@ -1686,34 +1698,43 @@
 
         const SYNC_RETRY_DELAYS_MS = [2000, 5000, 15000];
 
-        async function syncToSheet(retryCount = 0) {
+        // Retourne une promesse qui se résout une fois l'envoi terminé (succès ou échec définitif).
+        // Si un envoi est déjà en cours, on renvoie SA promesse plutôt que d'en démarrer un second.
+        function syncToSheet(retryCount = 0) {
             const url = AppState.settings.sheetUrl;
-            if (!url) return;
+            if (!url) return Promise.resolve();
+            if (sheetSyncPromise) return sheetSyncPromise;
             sheetSyncInFlight = true;
-            try {
-                await fetch(url, {
-                    method: 'POST',
-                    // text/plain evite le preflight CORS (OPTIONS) qu'Apps Script ne gere pas nativement
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'saveAll', data: AppState })
-                });
-                setSyncStatus('Google Sheet synchronise', 'ok');
-                sheetSyncInFlight = false;
-            } catch (err) {
-                console.error('Erreur de synchronisation Google Sheet:', err);
-                // Panne probablement transitoire (reseau qui vient de se reveiller apres une
-                // periode d'inactivite, WiFi qui se reconnecte...) : on reessaie automatiquement
-                // avant d'abandonner et d'afficher une erreur a l'utilisateur.
-                if (retryCount < SYNC_RETRY_DELAYS_MS.length) {
-                    setSyncStatus('Nouvelle tentative de synchronisation...', 'warning');
-                    setTimeout(() => syncToSheet(retryCount + 1), SYNC_RETRY_DELAYS_MS[retryCount]);
-                } else {
-                    const detail = (err && err.message) ? err.message : 'Erreur inconnue';
-                    setSyncStatus('Echec de synchronisation : ' + detail, 'error');
-                    showToast(`Impossible de synchroniser avec Google Sheet : ${detail}`, 'error');
+            sheetSyncPromise = (async () => {
+                try {
+                    await fetch(url, {
+                        method: 'POST',
+                        // text/plain evite le preflight CORS (OPTIONS) qu'Apps Script ne gere pas nativement
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'saveAll', data: AppState })
+                    });
+                    setSyncStatus('Google Sheet synchronise', 'ok');
+                    hasPendingLocalChanges = false;
                     sheetSyncInFlight = false;
+                    sheetSyncPromise = null;
+                } catch (err) {
+                    console.error('Erreur de synchronisation Google Sheet:', err);
+                    sheetSyncInFlight = false;
+                    sheetSyncPromise = null;
+                    // Panne probablement transitoire (reseau qui vient de se reveiller apres une
+                    // periode d'inactivite, WiFi qui se reconnecte...) : on reessaie automatiquement
+                    // avant d'abandonner et d'afficher une erreur a l'utilisateur.
+                    if (retryCount < SYNC_RETRY_DELAYS_MS.length) {
+                        setSyncStatus('Nouvelle tentative de synchronisation...', 'warning');
+                        setTimeout(() => syncToSheet(retryCount + 1), SYNC_RETRY_DELAYS_MS[retryCount]);
+                    } else {
+                        const detail = (err && err.message) ? err.message : 'Erreur inconnue';
+                        setSyncStatus('Echec de synchronisation : ' + detail, 'error');
+                        showToast(`Impossible de synchroniser avec Google Sheet : ${detail}`, 'error');
+                    }
                 }
-            }
+            })();
+            return sheetSyncPromise;
         }
 
         async function loadFromSheet(showFeedback = false) {
@@ -6250,9 +6271,12 @@
             if (Date.now() - lastSyncHealthCheckAt < 15000) return;
             lastSyncHealthCheckAt = Date.now();
 
-            // Pousse d'abord toute modification locale en attente, pour ne pas l'ecraser avec
-            // les donnees du Sheet lors du rechargement qui suit.
-            if (sheetSyncTimer) {
+            // Pousse et ATTEND d'abord toute modification locale en attente OU déjà en cours d'envoi
+            // (ex : un versement tout juste ajouté, encore dans le délai de 600ms avant envoi, ou déjà
+            // parti mais pas encore confirmé), pour ne jamais écraser un changement avec les anciennes
+            // données du Sheet lors du rechargement qui suit. syncToSheet() se raccroche à l'envoi déjà
+            // en cours s'il y en a un, au lieu d'en démarrer un second en parallèle.
+            if (hasPendingLocalChanges || sheetSyncInFlight) {
                 clearTimeout(sheetSyncTimer);
                 await syncToSheet();
             }
