@@ -5647,6 +5647,13 @@
             if(item) {
                 item.qty = Math.max(0, item.qty + delta);
                 item.lastUpdated = new Date().toISOString();
+                // Le +/- de la page Stock est une correction manuelle de quantité (comme l'édition
+                // du produit) : on répercute donc aussitôt sur purchaseQty/supplierLastUpdated pour
+                // que le "Total Achat" et le nom (avec quantité) côté Fournisseurs se mettent à jour
+                // avec. Seules les commandes et déclarations de perte restent SANS effet sur ces deux
+                // champs (elles ne touchent que le stock courant, pas ce qui a été acheté).
+                item.purchaseQty = item.qty;
+                item.supplierLastUpdated = new Date().toISOString();
                 showToast(`Stock mis à jour pour ${item.name} (${item.qty})`);
 
                 // Check auto-alert
