@@ -956,19 +956,19 @@
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouvelles commandes (jours)</label>
-                                <input type="number" min="1" step="1" id="set-notif-orders-days" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouvelles commandes (heures)</label>
+                                <input type="number" min="1" step="1" id="set-notif-orders-hours" placeholder="ex : 24" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouveaux clients (jours)</label>
-                                <input type="number" min="1" step="1" id="set-notif-clients-days" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouveaux clients (heures)</label>
+                                <input type="number" min="1" step="1" id="set-notif-clients-hours" placeholder="ex : 24" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouveaux produits (jours)</label>
-                                <input type="number" min="1" step="1" id="set-notif-products-days" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Durée notif. nouveaux produits (heures)</label>
+                                <input type="number" min="1" step="1" id="set-notif-products-hours" placeholder="ex : 24" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
                             </div>
                         </div>
-                        <p class="text-xs text-slate-400 -mt-2">Nombre de jours pendant lesquels une nouvelle commande, un nouveau client ou un nouveau produit reste signalé dans les notifications (7 par défaut).</p>
+                        <p class="text-xs text-slate-400 -mt-2">Nombre d'heures pendant lesquelles une nouvelle commande, un nouveau client ou un nouveau produit reste signalé dans les notifications (ex : 4, 6, 24... — 168h/7 jours par défaut).</p>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Taux de change (1 EUR = ... monnaie locale)</label>
                             <input type="number" min="0.0001" step="0.0001" id="set-exchange-rate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
@@ -1514,12 +1514,22 @@
                 sheetUrl: '',
                 driveFolderId: '',
                 notifUnpaidDays: 30,
-                notifOrdersDays: 7,
-                notifClientsDays: 7,
-                notifProductsDays: 7,
+                notifOrdersHours: 168,
+                notifClientsHours: 168,
+                notifProductsHours: 168,
                 exchangeRate: 1
             }
         };
+
+        // Convertit une ancienne durée de notification exprimée en JOURS (oldKey) vers la nouvelle
+        // clé en HEURES (newKey), une seule fois, si newKey n'existe pas encore mais que oldKey, oui.
+        // Sinon applique simplement la valeur par défaut (168h = 7 jours, comportement inchangé).
+        function migrateNotifDurationToHours_(settings, newKey, oldKey) {
+            if (settings[newKey] === undefined || settings[newKey] === null || settings[newKey] === '') {
+                const oldDays = Number(settings[oldKey]);
+                settings[newKey] = (oldDays > 0) ? oldDays * 24 : 168;
+            }
+        }
 
         // Load application state or force fresh food products dataset if updating from older version
         let AppState = JSON.parse(localStorage.getItem('stock_wa_app_food_v1')) || DEFAULT_DATA;
@@ -1599,9 +1609,13 @@
         // notifications ait déjà été ouvert ou non (même logique que le seuil "impayé" ci-dessous).
         if (!AppState.settings) AppState.settings = {};
         if (!AppState.settings.notifUnpaidDays) AppState.settings.notifUnpaidDays = 30;
-        if (!AppState.settings.notifOrdersDays) AppState.settings.notifOrdersDays = 7;
-        if (!AppState.settings.notifClientsDays) AppState.settings.notifClientsDays = 7;
-        if (!AppState.settings.notifProductsDays) AppState.settings.notifProductsDays = 7;
+        // Durées de notification (nouvelles commandes/clients/produits) : désormais exprimées et
+        // réglables en HEURES (ex: 6, 24, 4) plutôt qu'en jours, pour un contrôle plus fin. On
+        // reprend une éventuelle ancienne valeur en jours (notifOrdersDays, etc.) en la convertissant
+        // une seule fois en heures, pour ne pas perdre un réglage personnalisé déjà en place.
+        migrateNotifDurationToHours_(AppState.settings, 'notifOrdersHours', 'notifOrdersDays');
+        migrateNotifDurationToHours_(AppState.settings, 'notifClientsHours', 'notifClientsDays');
+        migrateNotifDurationToHours_(AppState.settings, 'notifProductsHours', 'notifProductsDays');
         if (!AppState.settings.exchangeRate) AppState.settings.exchangeRate = 1;
         if (AppState.settings.driveFolderId === undefined) AppState.settings.driveFolderId = '';
 
@@ -1742,6 +1756,13 @@
                     auditLogs: data.auditLogs || AppState.auditLogs || [],
                     settings: { ...AppState.settings, ...data.settings, sheetUrl: url }
                 };
+
+                // Même conversion jours -> heures que celle appliquée au chargement local (voir plus
+                // haut), au cas où le Sheet contiendrait encore d'anciennes clés notifOrdersDays/
+                // notifClientsDays/notifProductsDays sans leur équivalent en heures.
+                migrateNotifDurationToHours_(AppState.settings, 'notifOrdersHours', 'notifOrdersDays');
+                migrateNotifDurationToHours_(AppState.settings, 'notifClientsHours', 'notifClientsDays');
+                migrateNotifDurationToHours_(AppState.settings, 'notifProductsHours', 'notifProductsDays');
 
                 // Anciens produits (Sheet créé avant la séparation stock / fournisseur) : même
                 // migration que celle appliquée au chargement local, pour que purchaseQty existe
@@ -2294,13 +2315,13 @@
         function computeNotifications() {
             const now = Date.now();
             const unpaidDays = Number(AppState.settings.notifUnpaidDays) || 30;
-            const ordersDays = Number(AppState.settings.notifOrdersDays) || 7;
-            const clientsDays = Number(AppState.settings.notifClientsDays) || 7;
-            const productsDays = Number(AppState.settings.notifProductsDays) || 7;
+            const ordersHours = Number(AppState.settings.notifOrdersHours) || 168;
+            const clientsHours = Number(AppState.settings.notifClientsHours) || 168;
+            const productsHours = Number(AppState.settings.notifProductsHours) || 168;
             const UNPAID_THRESHOLD_MS = unpaidDays * 24 * 60 * 60 * 1000;
-            const ORDERS_WINDOW_MS = ordersDays * 24 * 60 * 60 * 1000;
-            const CLIENTS_WINDOW_MS = clientsDays * 24 * 60 * 60 * 1000;
-            const PRODUCTS_WINDOW_MS = productsDays * 24 * 60 * 60 * 1000;
+            const ORDERS_WINDOW_MS = ordersHours * 60 * 60 * 1000;
+            const CLIENTS_WINDOW_MS = clientsHours * 60 * 60 * 1000;
+            const PRODUCTS_WINDOW_MS = productsHours * 60 * 60 * 1000;
 
             // Une commande/client/produit reste "nouveau" pendant la durée configurée dans Réglages,
             // qu'il ait déjà été consulté ou non dans le panneau de notifications.
@@ -2320,7 +2341,7 @@
                 .filter(o => o.status === 'Impayé' && (now - new Date(o.date || o.createdAt).getTime()) > UNPAID_THRESHOLD_MS)
                 .sort((a, b) => new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
 
-            return { newOrders, newClients, newProducts, overdueUnpaid, unpaidDays, ordersDays, clientsDays, productsDays };
+            return { newOrders, newClients, newProducts, overdueUnpaid, unpaidDays, ordersHours, clientsHours, productsHours };
         }
 
         // Met à jour le badge (pastille rouge) sur les icônes cloche, sans toucher au contenu du panneau
@@ -5234,9 +5255,9 @@
             document.getElementById('set-drive-folder-id').value = AppState.settings.driveFolderId || '';
             document.getElementById('set-auto-alert').checked = AppState.settings.autoAlerts;
             document.getElementById('set-notif-unpaid-days').value = AppState.settings.notifUnpaidDays || 30;
-            document.getElementById('set-notif-orders-days').value = AppState.settings.notifOrdersDays || 7;
-            document.getElementById('set-notif-clients-days').value = AppState.settings.notifClientsDays || 7;
-            document.getElementById('set-notif-products-days').value = AppState.settings.notifProductsDays || 7;
+            document.getElementById('set-notif-orders-hours').value = AppState.settings.notifOrdersHours || 168;
+            document.getElementById('set-notif-clients-hours').value = AppState.settings.notifClientsHours || 168;
+            document.getElementById('set-notif-products-hours').value = AppState.settings.notifProductsHours || 168;
             document.getElementById('set-exchange-rate').value = AppState.settings.exchangeRate || 1;
         }
 
@@ -6171,12 +6192,12 @@
             AppState.settings.autoAlerts = document.getElementById('set-auto-alert').checked;
             const notifDays = parseInt(document.getElementById('set-notif-unpaid-days').value);
             AppState.settings.notifUnpaidDays = (!isNaN(notifDays) && notifDays > 0) ? notifDays : 30;
-            const notifOrdersDays = parseInt(document.getElementById('set-notif-orders-days').value);
-            AppState.settings.notifOrdersDays = (!isNaN(notifOrdersDays) && notifOrdersDays > 0) ? notifOrdersDays : 7;
-            const notifClientsDays = parseInt(document.getElementById('set-notif-clients-days').value);
-            AppState.settings.notifClientsDays = (!isNaN(notifClientsDays) && notifClientsDays > 0) ? notifClientsDays : 7;
-            const notifProductsDays = parseInt(document.getElementById('set-notif-products-days').value);
-            AppState.settings.notifProductsDays = (!isNaN(notifProductsDays) && notifProductsDays > 0) ? notifProductsDays : 7;
+            const notifOrdersHours = parseInt(document.getElementById('set-notif-orders-hours').value);
+            AppState.settings.notifOrdersHours = (!isNaN(notifOrdersHours) && notifOrdersHours > 0) ? notifOrdersHours : 168;
+            const notifClientsHours = parseInt(document.getElementById('set-notif-clients-hours').value);
+            AppState.settings.notifClientsHours = (!isNaN(notifClientsHours) && notifClientsHours > 0) ? notifClientsHours : 168;
+            const notifProductsHours = parseInt(document.getElementById('set-notif-products-hours').value);
+            AppState.settings.notifProductsHours = (!isNaN(notifProductsHours) && notifProductsHours > 0) ? notifProductsHours : 168;
             const exchangeRate = parseFloat(document.getElementById('set-exchange-rate').value);
             AppState.settings.exchangeRate = (!isNaN(exchangeRate) && exchangeRate > 0) ? exchangeRate : 1;
             saveAppState();
