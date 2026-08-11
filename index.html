@@ -1542,6 +1542,10 @@
                 localPasswordsMigrated = true;
             }
         });
+        // Repère si la migration purchaseQty ci-dessous (plus bas) a dû combler une valeur
+        // manquante, pour forcer une resynchronisation immédiate vers le Sheet (voir explication
+        // détaillée juste avant la boucle sur AppState.products).
+        let localPurchaseQtyMigrated = false;
 
         // Anciennes commandes sans montant payé enregistré : on le déduit du statut existant
         AppState.orders.forEach(o => {
@@ -1573,7 +1577,16 @@
             // actuelle comme base de calcul du "Total Achat" fournisseur (purchaseQty), pour que les
             // prochaines commandes/déclarations de perte (qui ne touchent que le stock courant, qty)
             // n'affectent plus jamais ce total ni le statut de règlement fournisseur.
-            if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') p.purchaseQty = p.qty;
+            // IMPORTANT : si on se contente de figer la valeur ici SANS la renvoyer immédiatement au
+            // Sheet, elle ne vit que dans la mémoire de CET appareil. Un autre appareil qui charge les
+            // données à un autre moment (donc avec un p.qty courant différent) figerait une valeur
+            // différente pour le même produit -> désynchronisation permanente entre téléphone et
+            // ordinateur (chacun affiche un "Total Achat" différent, sans jamais se réconcilier). On
+            // marque donc ce cas pour forcer une resynchronisation vers le Sheet juste après.
+            if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') {
+                p.purchaseQty = p.qty;
+                localPurchaseQtyMigrated = true;
+            }
             if (!p.supplierLastUpdated) p.supplierLastUpdated = p.lastUpdated || p.createdAt;
         });
         // Anciens clients sans date de création
@@ -1596,6 +1609,13 @@
         // Google Sheet ne conserve plus de mot de passe en clair dès le prochain chargement.
         if (localPasswordsMigrated) {
             localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
+        }
+        // Renvoie immédiatement au Sheet les purchaseQty comblées ci-dessus, pour que la valeur
+        // figée soit la même pour tous les appareils dès leur prochaine synchronisation (au lieu
+        // que chacun fige sa propre valeur locale, jamais réconciliée). scheduleSheetSync() est
+        // sans effet si aucun Sheet n'est encore configuré à ce stade.
+        if (localPurchaseQtyMigrated) {
+            scheduleSheetSync();
         }
 
         // ==================== JOURNAL D'AUDIT (modifications/suppressions) ====================
@@ -1725,9 +1745,18 @@
 
                 // Anciens produits (Sheet créé avant la séparation stock / fournisseur) : même
                 // migration que celle appliquée au chargement local, pour que purchaseQty existe
-                // toujours avant tout calcul de "Total Achat" fournisseur.
+                // toujours avant tout calcul de "Total Achat" fournisseur. Si la valeur était bien
+                // manquante dans le Sheet, on le note (purchaseQtyMigrated) pour la réécrire aussitôt
+                // au Sheet plus bas : sinon chaque appareil fige sa propre valeur (son p.qty du moment)
+                // sans jamais la partager, et deux appareils synchronisant à des instants différents
+                // affichent alors durablement des "Total Achat" fournisseur différents pour le même
+                // produit — exactement le symptôme "ça diffère entre le téléphone et l'ordinateur".
+                let purchaseQtyMigrated = false;
                 AppState.products.forEach(p => {
-                    if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') p.purchaseQty = p.qty;
+                    if (p.purchaseQty === undefined || p.purchaseQty === null || p.purchaseQty === '') {
+                        p.purchaseQty = p.qty;
+                        purchaseQtyMigrated = true;
+                    }
                     if (!p.supplierLastUpdated) p.supplierLastUpdated = p.lastUpdated || p.createdAt;
                 });
 
@@ -1743,7 +1772,7 @@
                 });
 
                 localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
-                if (sheetPasswordsMigrated) syncToSheet();
+                if (sheetPasswordsMigrated || purchaseQtyMigrated) syncToSheet();
 
                 // Si un utilisateur est connecté, on revalide son compte avec les données fraîchement chargées
                 // (rôle éventuellement modifié depuis un autre appareil, ou compte supprimé)
