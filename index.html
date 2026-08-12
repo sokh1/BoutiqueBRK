@@ -896,8 +896,8 @@
                                 <i class="fa-solid fa-upload"></i>
                             </button>
                         </div>
-                        <button onclick="loadDriveFolder(driveCurrentFolderId, false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-4 py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all whitespace-nowrap w-full sm:w-auto">
-                            <i class="fa-solid fa-arrows-rotate"></i>
+                        <button id="documents-refresh-btn" onclick="loadDriveFolder(driveCurrentFolderId, false)" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-4 py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all whitespace-nowrap w-full sm:w-auto">
+                            <i id="documents-refresh-icon" class="fa-solid fa-arrows-rotate"></i>
                             <span>Actualiser</span>
                         </button>
                     </div>
@@ -1965,6 +1965,14 @@
         let driveCurrentFolders = []; // dernière liste de sous-dossiers chargée (pour la recherche locale)
         let driveCurrentFiles = [];   // dernière liste de fichiers chargée (pour la recherche locale)
         let driveAutoRefreshTimer = null;
+        // Cache memoire (perdu a la fermeture de l'appli) des dossiers Drive deja consultes durant
+        // cette session : { [folderId || '__root__']: { folder, folders, files, timestamp } }.
+        // Apps Script + l'API Drive repondent en 1 a quelques secondes a CHAQUE appel -- sans ce
+        // cache, chaque clic (dossier, fil d'Ariane, Actualiser) marquait cette pause, ce qui rend
+        // la navigation lente. Avec le cache, revisiter un dossier deja charge est instantane ; une
+        // actualisation silencieuse part quand meme en arriere-plan pour detecter les changements
+        // recents (nouveau fichier ajoute depuis un autre appareil, etc.).
+        let driveFolderCache = {};
 
         // Actualisation automatique de la page Documents : plus besoin de cliquer sur
         // "Actualiser" pour voir un fichier ajouté depuis Drive directement (par un autre
@@ -2037,6 +2045,11 @@
             `;
         }
 
+        function setDocumentsRefreshIndicator(active) {
+            const icon = document.getElementById('documents-refresh-icon');
+            if (icon) icon.classList.toggle('fa-spin', !!active);
+        }
+
         async function loadDriveFolder(folderId, isInitial, silent) {
             const contentEl = document.getElementById('documents-content');
             if (!contentEl) return;
@@ -2051,6 +2064,34 @@
                 }
                 return;
             }
+
+            const cacheKey = folderId || '__root__';
+            const cached = driveFolderCache[cacheKey];
+
+            // Navigation "normale" (pas l'actualisation periodique silencieuse) vers un dossier deja
+            // visite cette session : on affiche IMMEDIATEMENT le contenu en cache, sans attendre le
+            // reseau, puis on relance quand meme une actualisation en arriere-plan (silencieuse) pour
+            // detecter d'eventuels changements recents. C'est ce qui rend le clic sur un dossier deja
+            // consulte, ou sur le fil d'Ariane, instantane au lieu d'attendre a chaque fois la reponse
+            // d'Apps Script (typiquement 1 a quelques secondes).
+            if (cached && !silent) {
+                driveCurrentFolderId = cached.folder.id;
+                if (driveBreadcrumb.length === 0) {
+                    driveBreadcrumb = [{ id: cached.folder.id, name: cached.folder.name }];
+                } else {
+                    driveBreadcrumb[driveBreadcrumb.length - 1].name = cached.folder.name;
+                }
+                renderDriveBreadcrumb();
+                driveCurrentFolders = cached.folders;
+                driveCurrentFiles = cached.files;
+                const searchInputCached = document.getElementById('documents-search-input');
+                if (searchInputCached) searchInputCached.value = '';
+                renderDriveFolderContent(driveCurrentFolders, driveCurrentFiles);
+                setDocumentsRefreshIndicator(true);
+                loadDriveFolder(folderId, isInitial, true).finally(() => setDocumentsRefreshIndicator(false));
+                return;
+            }
+
             if (!silent) {
                 contentEl.innerHTML = `
                     <div class="bg-white p-10 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
@@ -2077,6 +2118,12 @@
                 renderDriveBreadcrumb();
                 driveCurrentFolders = json.folders || [];
                 driveCurrentFiles = json.files || [];
+                driveFolderCache[cacheKey] = {
+                    folder: json.folder,
+                    folders: driveCurrentFolders,
+                    files: driveCurrentFiles,
+                    timestamp: Date.now()
+                };
                 if (silent) {
                     // Actualisation automatique en arrière-plan : on garde le texte de recherche
                     // déjà saisi par l'utilisateur, on ne l'efface jamais tout seul.
@@ -2287,6 +2334,9 @@
                 if (!json.success) throw new Error(json.error || "Échec de l'envoi du fichier");
 
                 showToast(`Fichier "${file.name}" ajouté !`);
+                // On invalide le cache de ce dossier : on veut etre certain de voir le fichier
+                // tout juste envoye, pas une version en cache qui ne l'inclut pas encore.
+                delete driveFolderCache[driveCurrentFolderId || '__root__'];
                 loadDriveFolder(driveCurrentFolderId, false);
             } catch (err) {
                 console.error('Erreur envoi fichier Drive:', err);
