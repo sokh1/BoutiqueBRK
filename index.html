@@ -1050,6 +1050,8 @@
                         <option value="all">Tout</option>
                         <option value="produit">Produits</option>
                         <option value="commande">Commandes</option>
+                        <option value="client">Clients</option>
+                        <option value="session">Connexions</option>
                     </select>
                 </div>
                 <p class="text-xs text-slate-500">Historique des modifications et suppressions sur les produits et les commandes (les 100 entrées les plus récentes).</p>
@@ -1511,7 +1513,11 @@
             settings: {
                 waPhone: '+22245220011',
                 autoAlerts: true,
-                sheetUrl: '',
+                // TEMPORAIRE (tests en cours) : URL de la base Google Sheet codée en dur ici pour
+                // que chaque appareil se connecte automatiquement sans passer par Réglages. À
+                // retirer (remettre '') une fois les tests terminés, pour repasser à une
+                // configuration manuelle normale.
+                sheetUrl: 'https://script.google.com/macros/s/AKfycbyV0n2VuUWxytW6UPDAt9_2J_AzvHbg984Ax7a_G1FLbaj8ti6Vy9-mm7q0flgInbwW/exec',
                 driveFolderId: '',
                 notifUnpaidDays: 30,
                 notifOrdersHours: 168,
@@ -1618,6 +1624,12 @@
         migrateNotifDurationToHours_(AppState.settings, 'notifProductsHours', 'notifProductsDays');
         if (!AppState.settings.exchangeRate) AppState.settings.exchangeRate = 1;
         if (AppState.settings.driveFolderId === undefined) AppState.settings.driveFolderId = '';
+        // TEMPORAIRE (tests en cours) : comble aussi l'URL sur un appareil qui a déjà des données
+        // locales mais pas encore d'URL Sheet configurée, pour ne pas devoir la ressaisir à la main
+        // partout. À retirer une fois les tests terminés (voir DEFAULT_DATA.settings.sheetUrl).
+        if (!AppState.settings.sheetUrl) {
+            AppState.settings.sheetUrl = 'https://script.google.com/macros/s/AKfycbyV0n2VuUWxytW6UPDAt9_2J_AzvHbg984Ax7a_G1FLbaj8ti6Vy9-mm7q0flgInbwW/exec';
+        }
 
         // Persiste immédiatement les mots de passe migrés (voir plus haut), pour que le
         // Google Sheet ne conserve plus de mot de passe en clair dès le prochain chargement.
@@ -1632,20 +1644,21 @@
             scheduleSheetSync();
         }
 
-        // ==================== JOURNAL D'AUDIT (modifications/suppressions) ====================
-        // Trace les modifications et suppressions sur les produits et les commandes :
-        // date, utilisateur, action, entité concernée. Ne journalise JAMAIS les mots de passe
-        // ni les actions de gestion des utilisateurs (hors périmètre demandé).
+        // ==================== JOURNAL D'AUDIT (modifications/suppressions/connexions) ====================
+        // Trace les modifications/suppressions sur les produits, commandes et clients, ainsi que
+        // les connexions/déconnexions de session : date, utilisateur, action, entité concernée.
+        // Ne journalise JAMAIS les mots de passe ni les actions de gestion des utilisateurs
+        // (création/suppression de compte, réinitialisation de mot de passe — hors périmètre demandé).
         function logAudit(entityType, entityId, entityLabel, action, details) {
             if (!Array.isArray(AppState.auditLogs)) AppState.auditLogs = [];
             AppState.auditLogs.unshift({
                 id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 timestamp: new Date().toISOString(),
                 username: currentUser ? currentUser.username : 'inconnu',
-                entityType,      // 'produit' | 'commande'
+                entityType,      // 'produit' | 'commande' | 'client' | 'session'
                 entityId: entityId || '',
                 entityLabel: entityLabel || '',
-                action,          // 'modification' | 'suppression'
+                action,          // 'modification' | 'suppression' | 'connexion' | 'deconnexion'
                 details: details || ''
             });
             // Conserve un historique raisonnable (les 500 dernières entrées)
@@ -2787,7 +2800,7 @@
                     <div class="p-4 space-y-3">
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0">
-                                <span class="font-bold text-slate-900 block">${p.name}${p.fileData ? ` <button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : ''}</span>
+                                <span class="font-bold text-slate-900 block">${p.name}${(p.driveFileId || p.fileData) ? ` <button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : ''}</span>
                                 <span class="text-xs text-slate-400">${p.ref ? p.ref + ' · ' : ''}${p.category || 'Non classé'}</span>
                             </div>
                             ${badgeHtml}
@@ -2852,7 +2865,7 @@
                 return `
                     <tr class="hover:bg-slate-50/80 transition-colors">
                         <td class="py-3.5 px-4">
-                            <span class="font-bold text-slate-900 block">${p.name}${p.fileData ? ` <button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : ''}</span>
+                            <span class="font-bold text-slate-900 block">${p.name}${(p.driveFileId || p.fileData) ? ` <button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip text-xs"></i></button>` : ''}</span>
                             <span class="text-xs text-slate-400">${p.ref ? p.ref + ' · ' : ''}${p.category || 'Non classé'}</span>
                         </td>
                         <td class="py-3.5 px-4 font-semibold text-slate-700">${Number(p.priceBuy || 0).toFixed(2)} UM</td>
@@ -2910,7 +2923,7 @@
                             // opération d'achat/règlement fournisseur n'a eu lieu.
                             const supplierDateStr = p.supplierLastUpdated ? new Date(p.supplierLastUpdated).toLocaleDateString('fr-FR') : '-';
                             const label = `${p.name}_${p.ref || p.id}_${p.purchaseQty ?? p.qty}_${supplierDateStr}`;
-                            const fileBtn = p.fileData ? `<button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip"></i></button>` : '';
+                            const fileBtn = (p.driveFileId || p.fileData) ? `<button onclick="viewProductFile('${p.id}')" title="Voir le fichier joint" class="text-blue-600 hover:text-blue-800 ml-1"><i class="fa-solid fa-paperclip"></i></button>` : '';
                             const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
                             const paidToSupplier = Number(p.supplierAmountPaid) || 0;
                             const supplierStatus = computeSupplierPaymentStatus(paidToSupplier, totalAchat);
@@ -5179,16 +5192,25 @@
 
         function loginAs(user, remember) {
             currentUser = user;
+            logAudit('session', user.id, user.username, 'connexion', `Rôle : ${user.role}`);
             if (remember) localStorage.setItem('stock_wa_current_username', user.username);
             document.getElementById('login-screen').classList.add('hidden');
             setAppVisible(true);
             switchTab('dashboard');
             applyRolePermissions();
-            renderAll();
             resetInactivityTimer();
+            // saveAppState() fait le rendu (renderAll) ET programme l'envoi vers le Sheet, pour que
+            // cette entrée d'audit "connexion" parte bien synchroniser comme le reste.
+            saveAppState();
         }
 
         function handleLogout(reason) {
+            // On journalise AVANT de vider currentUser, sinon logAudit() n'a plus personne à qui
+            // attribuer cette déconnexion.
+            if (currentUser) {
+                logAudit('session', currentUser.id, currentUser.username, 'deconnexion', reason === 'inactivity' ? 'Inactivité (10 min)' : 'Déconnexion manuelle');
+                saveAppState();
+            }
             currentUser = null;
             stopDriveAutoRefresh();
             localStorage.removeItem('stock_wa_current_username');
@@ -5350,11 +5372,21 @@
 
             const actionStyles = {
                 modification: 'bg-amber-100 text-amber-800',
-                suppression: 'bg-rose-100 text-rose-800'
+                suppression: 'bg-rose-100 text-rose-800',
+                connexion: 'bg-emerald-100 text-emerald-800',
+                deconnexion: 'bg-slate-200 text-slate-600'
+            };
+            const actionLabels = {
+                modification: 'Modification',
+                suppression: 'Suppression',
+                connexion: 'Connexion',
+                deconnexion: 'Déconnexion'
             };
             const entityIcons = {
                 produit: 'fa-box',
-                commande: 'fa-cart-shopping'
+                commande: 'fa-cart-shopping',
+                client: 'fa-user',
+                session: 'fa-right-to-bracket'
             };
 
             listEl.innerHTML = logs.map(l => `
@@ -5364,7 +5396,7 @@
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center flex-wrap gap-1.5">
-                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${actionStyles[l.action] || 'bg-slate-100 text-slate-700'}">${l.action === 'suppression' ? 'Suppression' : 'Modification'}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${actionStyles[l.action] || 'bg-slate-100 text-slate-700'}">${actionLabels[l.action] || l.action}</span>
                             <span class="text-xs font-bold text-slate-800 truncate">${l.entityLabel || ''}</span>
                         </div>
                         <p class="text-[11px] text-slate-500 mt-0.5">${l.details || ''}</p>
@@ -5549,7 +5581,17 @@
                 qtyInput.title = 'Quantité non modifiable ici — gérée via Commandes / Déclarations';
                 qtyInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
                 row.querySelector('.row-minqty').value = item.minQty;
-                if (item.fileData) {
+                if (item.driveFileId) {
+                    // Pièce jointe déjà envoyée sur Drive : on garde juste la référence, sans la
+                    // renvoyer, tant que l'utilisateur ne choisit pas un autre fichier.
+                    row.dataset.existingDriveFileId = item.driveFileId;
+                    row.dataset.existingFileName = item.fileName || '';
+                    showRowFileStatus(row, item.fileName || 'fichier joint', true);
+                } else if (item.fileData) {
+                    // Ancien produit (avant la migration des pièces jointes vers Drive) : le fichier
+                    // est encore encodé localement. On le garde en attente ici ; il sera envoyé vers
+                    // Drive automatiquement au prochain enregistrement (voir handleProductForm),
+                    // migrant l'ancienne pièce jointe sans action supplémentaire de l'utilisateur.
                     row.dataset.fileData = item.fileData;
                     row.dataset.fileName = item.fileName || 'fichier';
                     showRowFileStatus(row, item.fileName || 'fichier joint', true);
@@ -5578,6 +5620,8 @@
             if (!row) return;
             delete row.dataset.fileData;
             delete row.dataset.fileName;
+            delete row.dataset.existingDriveFileId;
+            delete row.dataset.existingFileName;
             const fileInput = row.querySelector('.row-file');
             if (fileInput) fileInput.value = '';
             const statusEl = row.querySelector('.row-file-status');
@@ -5668,7 +5712,39 @@
             return 'PRD-' + String(startNum).padStart(4, '0');
         }
 
-        function handleProductForm(e) {
+        // Envoie la pièce jointe d'une ligne de produit vers le sous-dossier Drive "produits" (sous
+        // le dossier Drive racine configuré dans Réglages), en la nommant d'après le nom + la
+        // référence du produit — le même identifiant que celui affiché sur la carte "Produits
+        // fournis" côté Fournisseurs, pour la retrouver facilement dans Drive. Renvoie
+        // { driveFileId, fileName } à stocker sur le produit ; ne stocke plus jamais le fichier
+        // encodé directement dans la feuille (celle-ci n'a d'ailleurs aucune colonne pour ça).
+        async function uploadProductFile_(dataUri, desiredFileName) {
+            const sheetUrl = AppState.settings.sheetUrl;
+            if (!sheetUrl) {
+                throw new Error("Connecte d'abord la base (Réglages) et configure un dossier Drive avec un sous-dossier \"produits\" pour joindre un fichier");
+            }
+            const commaIdx = dataUri.indexOf(',');
+            const base64Data = commaIdx >= 0 ? dataUri.slice(commaIdx + 1) : dataUri;
+            const mimeMatch = dataUri.match(/^data:([^;]+);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+            const res = await fetch(sheetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'uploadDriveFile',
+                    subfolderName: 'produits',
+                    fileName: desiredFileName,
+                    mimeType,
+                    base64Data
+                })
+            });
+            if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || "Échec de l'envoi de la pièce jointe vers Drive");
+            return { driveFileId: json.file.id, fileName: json.file.name };
+        }
+
+        async function handleProductForm(e) {
             e.preventDefault();
             const rows = document.querySelectorAll('#product-rows .product-row');
 
@@ -5683,6 +5759,9 @@
                 }
             }
 
+            const submitBtn = document.getElementById('product-submit-btn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-60'); }
+
             let addedCount = 0;
             let updatedCount = 0;
             let lastName = '';
@@ -5695,7 +5774,8 @@
             });
             let nextRefNum = (existingNums.length ? Math.max(...existingNums) : 0) + 1;
 
-            rows.forEach((row, idx) => {
+            for (let idx = 0; idx < rows.length; idx++) {
+                const row = rows[idx];
                 const name = row.querySelector('.row-name').value.trim().toUpperCase();
                 const category = row.querySelector('.row-category').value;
                 const priceBuy = parseFloat(row.querySelector('.row-price-buy').value);
@@ -5703,7 +5783,7 @@
                 const qty = parseInt(row.querySelector('.row-qty').value);
                 const minQty = parseInt(row.querySelector('.row-minqty').value);
                 const supplierId = row.querySelector('.row-supplier').value || '';
-                if (!name || isNaN(priceBuy) || isNaN(priceSell) || isNaN(qty) || isNaN(minQty)) return;
+                if (!name || isNaN(priceBuy) || isNaN(priceSell) || isNaN(qty) || isNaN(minQty)) continue;
 
                 // Identifiant technique unique par ligne (même si plusieurs lignes sont
                 // soumises dans la même milliseconde) : horodatage + index de ligne + suffixe aléatoire.
@@ -5719,8 +5799,28 @@
                     nextRefNum++;
                 }
 
-                const fileData = row.dataset.fileData || '';
-                const fileName = row.dataset.fileName || '';
+                // Pièce jointe : si une nouvelle a été sélectionnée (ou qu'une ancienne, stockée
+                // localement avant cette version, doit être migrée), on l'envoie vers Drive sous ce
+                // nom "NOM_REF" (identique à celui affiché dans "Produits fournis") + son extension
+                // d'origine. Sinon on conserve simplement la référence Drive déjà enregistrée.
+                let driveFileId = row.dataset.existingDriveFileId || '';
+                let fileName = row.dataset.existingFileName || '';
+                if (row.dataset.fileData) {
+                    const origName = row.dataset.fileName || '';
+                    const extMatch = /(\.[a-zA-Z0-9]+)$/.exec(origName);
+                    const ext = extMatch ? extMatch[1] : '';
+                    try {
+                        const uploaded = await uploadProductFile_(row.dataset.fileData, `${name}_${ref}${ext}`);
+                        driveFileId = uploaded.driveFileId;
+                        fileName = uploaded.fileName;
+                    } catch (err) {
+                        console.error('Erreur envoi pièce jointe produit:', err);
+                        showToast(`Produit "${name}" enregistré, mais échec de l'envoi de la pièce jointe : ${err.message || 'erreur inconnue'}`, 'warning');
+                        // Non bloquant : on continue avec la référence précédente (ou aucune), le
+                        // reste des informations du produit doit quand même pouvoir être enregistré.
+                    }
+                }
+
                 const createdAt = existingIdx >= 0 ? AppState.products[existingIdx].createdAt : new Date().toISOString();
                 const supplierAmountPaid = existingIdx >= 0 ? (AppState.products[existingIdx].supplierAmountPaid || 0) : 0;
                 const supplierPaidDate = existingIdx >= 0 ? (AppState.products[existingIdx].supplierPaidDate || '') : '';
@@ -5733,7 +5833,7 @@
                 // jamais par une commande ou une déclaration de perte : ces dernières ne modifient
                 // que le stock courant (qty), afin que la page Fournisseurs reste stable tant que
                 // rien n'a réellement changé côté achat/règlement fournisseur.
-                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, fileData, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName, purchaseQty: qty, supplierLastUpdated: new Date().toISOString() };
+                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, driveFileId, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName, purchaseQty: qty, supplierLastUpdated: new Date().toISOString() };
 
                 if (existingIdx >= 0) {
                     AppState.products[existingIdx] = prodObj;
@@ -5744,7 +5844,9 @@
                     addedCount++;
                 }
                 lastName = name;
-            });
+            }
+
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-60'); }
 
             if (addedCount === 0 && updatedCount === 0) return;
 
@@ -5958,12 +6060,26 @@
             }
         }
 
-        function viewProductFile(productId) {
+        async function viewProductFile(productId) {
             const p = AppState.products.find(pr => pr.id === productId);
-            if (!p || !p.fileData) {
+            if (!p || (!p.driveFileId && !p.fileData)) {
                 showToast("Aucun fichier joint pour ce produit", 'warning');
                 return;
             }
+            // Produits migrés vers Drive : on récupère le fichier via l'API.
+            if (p.driveFileId) {
+                try {
+                    showToast('Ouverture du fichier...', 'success');
+                    const { blob } = await fetchDriveFileBlob_(p.driveFileId);
+                    const objectUrl = URL.createObjectURL(blob);
+                    window.open(objectUrl, '_blank');
+                } catch (err) {
+                    console.error('Erreur ouverture pièce jointe Drive:', err);
+                    showToast("Impossible d'ouvrir la pièce jointe : " + (err.message || 'Erreur inconnue'), 'error');
+                }
+                return;
+            }
+            // Anciens produits (avant la migration vers Drive) : fichier encore encodé localement.
             openDataUriInNewTab(p.fileData, p.fileName || 'fichier');
         }
 
@@ -6087,6 +6203,7 @@
 
             if(existingIdx >= 0) {
                 AppState.clients[existingIdx] = clientObj;
+                logAudit('client', clientObj.id, name, 'modification', `${lieu || ''}${phone ? ' · ' + phone : ''}`);
                 showToast(`Client "${name}" modifié avec succès !`);
             } else {
                 AppState.clients.push(clientObj);
@@ -6099,7 +6216,9 @@
 
         function deleteClient(id) {
             if(confirm('Voulez-vous vraiment supprimer ce client ?')) {
+                const client = AppState.clients.find(c => c.id === id);
                 AppState.clients = AppState.clients.filter(c => c.id !== id);
+                if (client) logAudit('client', client.id, `${client.prenom || ''} ${client.nom || ''}`.trim(), 'suppression', `${client.lieu || ''}${client.phone ? ' · ' + client.phone : ''}`);
                 saveAppState();
                 showToast('Client supprimé');
             }

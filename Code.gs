@@ -88,11 +88,23 @@
  * synchronisée avec cette feuille — les colonnes correspondantes n'existaient
  * pas encore) par une simple référence légère vers le fichier stocké sur
  * Drive.
+ *
+ * SOUS-DOSSIER "produits" (v22) : même principe, appliqué cette fois aux
+ * pièces jointes de la fiche Produit (Stock). Deux nouvelles colonnes
+ * 'driveFileId' et 'fileName' ont été ajoutées à l'onglet "Produits" : la
+ * pièce jointe d'un produit n'est plus jamais stockée en local uniquement
+ * (elle ne l'était d'ailleurs jamais synchronisée avec cette feuille non
+ * plus, faute de colonnes) — elle est envoyée vers le sous-dossier Drive
+ * nommé "produits", qui doit exister au préalable dans le dossier Drive
+ * racine (comme "declarations" et "factures"). Le nom du fichier envoyé
+ * reprend le nom et la référence du produit (ex. "SUCRE_PRD-0001.jpg"), le
+ * même identifiant que celui affiché sur la carte "Produits fournis" côté
+ * Fournisseurs, pour le retrouver facilement dans Drive.
  * ==========================================================================
  */
 
 const SHEETS = {
-  products: { name: 'Produits', cols: ['id', 'ref', 'name', 'category', 'priceBuy', 'priceSell', 'qty', 'minQty', 'supplierId', 'lastUpdated', 'createdAt', 'supplierAmountPaid', 'supplierPaidDate', 'regularisePar', 'createdBy', 'updatedBy', 'purchaseQty', 'supplierLastUpdated'] },
+  products: { name: 'Produits', cols: ['id', 'ref', 'name', 'category', 'priceBuy', 'priceSell', 'qty', 'minQty', 'supplierId', 'lastUpdated', 'createdAt', 'supplierAmountPaid', 'supplierPaidDate', 'regularisePar', 'createdBy', 'updatedBy', 'purchaseQty', 'supplierLastUpdated', 'driveFileId', 'fileName'] },
   suppliers: { name: 'Fournisseurs', cols: ['id', 'name', 'phone', 'notes'] },
   clients: { name: 'Clients', cols: ['id', 'nom', 'prenom', 'lieu', 'phone', 'notes', 'createdAt'] },
   orders: { name: 'Commandes', cols: ['id', 'clientId', 'clientName', 'beneficiaryNom', 'beneficiaryPrenom', 'items', 'total', 'amountPaid', 'status', 'paymentMethod', 'date', 'createdAt', 'createdBy', 'updatedBy', 'exchangeRate', 'paymentHistory'] },
