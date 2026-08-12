@@ -1679,6 +1679,15 @@
         // sans ce garde-fou, un versement/une modification tout juste enregistré(e) peut sembler
         // "non pris en compte" et disparaître jusqu'à ce qu'on le ressaisisse une seconde fois.
         let hasPendingLocalChanges = false;
+        // Compteur incremente a CHAQUE modification locale programmee pour synchronisation. Sert a
+        // detecter, dans loadFromSheet(), qu'une nouvelle modification (ex: une suppression) a eu
+        // lieu PENDANT qu'une lecture etait deja en vol -- sans quoi la reponse de cette lecture,
+        // qui date d'AVANT la modification, ecraserait bel et bien l'etat local a son arrivee,
+        // faisant "reapparaitre" l'element qu'on venait de supprimer/modifier jusqu'a ce qu'on
+        // reessaie (parfois 2 ou 3 fois). C'est un angle different du garde-fou hasPendingLocalChanges
+        // ci-dessus, qui ne protege que contre le DEMARRAGE d'une nouvelle lecture, pas contre une
+        // lecture deja en cours dont la reponse arrive apres coup.
+        let localChangeVersion = 0;
 
         function saveAppState() {
             localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
@@ -1704,6 +1713,7 @@
                 return;
             }
             hasPendingLocalChanges = true;
+            localChangeVersion++;
             clearTimeout(sheetSyncTimer);
             setSyncStatus('Synchronisation...', 'warning');
             sheetSyncTimer = setTimeout(syncToSheet, 600);
@@ -1753,6 +1763,10 @@
         async function loadFromSheet(showFeedback = false) {
             const url = AppState.settings.sheetUrl;
             if (!url) return false;
+            // Photo de la "version" locale au moment de lancer la requete : si une nouvelle
+            // modification locale survient PENDANT que cette lecture est en vol, on le detectera en
+            // comparant ce nombre a localChangeVersion une fois la reponse arrivee (voir plus bas).
+            const versionAtStart = localChangeVersion;
             setSyncStatus('Connexion au Sheet...', 'warning');
             try {
                 const res = await fetch(url, { method: 'GET' });
@@ -1778,6 +1792,17 @@
                 const toText = (v) => (v === undefined || v === null) ? '' : String(v);
                 const sanitizedSuppliers = (data.suppliers || []).map(s => ({ ...s, phone: toText(s.phone) }));
                 const sanitizedClients = (data.clients || []).map(c => ({ ...c, phone: toText(c.phone) }));
+
+                // Une modification locale (ex: une suppression) a eu lieu PENDANT cette lecture : la
+                // reponse qu'on vient de recevoir date d'AVANT ce changement et l'ecraserait si on
+                // l'appliquait maintenant. On l'ignore sans rien casser : la modification locale, elle,
+                // est deja programmee pour partir vers le Sheet (voir scheduleSheetSync) et le
+                // prochain cycle de lecture en arriere-plan la verra correctement une fois envoyee.
+                if (localChangeVersion !== versionAtStart) {
+                    console.warn('Lecture Sheet ignoree : une modification locale plus recente est en attente d\'envoi.');
+                    setSyncStatus('Google Sheet synchronise', 'ok');
+                    return true;
+                }
 
                 AppState = {
                     products: (data.products && data.products.length) ? data.products : AppState.products,
