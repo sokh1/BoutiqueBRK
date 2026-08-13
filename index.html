@@ -1896,12 +1896,23 @@
                         console.warn('Fusion avant synchronisation impossible, envoi direct :', mergeErr);
                     }
 
-                    await fetch(url, {
+                    const postRes = await fetch(url, {
                         method: 'POST',
                         // text/plain evite le preflight CORS (OPTIONS) qu'Apps Script ne gere pas nativement
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({ action: 'saveAll', data: payload })
                     });
+                    // Le serveur peut desormais refuser l'ecriture (ex : verrou occupe par un autre
+                    // envoi simultane, voir Code.gs v23) en repondant success:false SANS erreur HTTP —
+                    // sans cette verification, une telle reponse etait jusqu'ici traitee comme un
+                    // succes silencieux, et la modification etait perdue jusqu'a la prochaine lecture.
+                    if (!postRes.ok) {
+                        throw new Error(`Erreur HTTP ${postRes.status}`);
+                    }
+                    const postJson = await postRes.json().catch(() => null);
+                    if (!postJson || !postJson.success) {
+                        throw new Error((postJson && postJson.error) || 'Le serveur a refuse cette synchronisation');
+                    }
                     lastServerSnapshot = deepClone_({
                         products: payload.products, suppliers: payload.suppliers, clients: payload.clients,
                         orders: payload.orders, expenses: payload.expenses, users: payload.users,
