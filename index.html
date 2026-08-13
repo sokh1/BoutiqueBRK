@@ -1699,6 +1699,10 @@
         // localement et doivent donc suivre la version distante la plus recente (qui a pu changer
         // entre-temps sur un AUTRE appareil/utilisateur).
         let lastServerSnapshot = null;
+        // Promesse de la TOUTE PREMIERE lecture reussie du Sheet dans cette session (declenchee au
+        // demarrage de l'appli, voir DOMContentLoaded plus bas). Tant qu'elle n'est pas resolue,
+        // aucun envoi (syncToSheet) ne doit avoir lieu : voir le garde-fou en tete de syncToSheet.
+        let initialLoadPromise = null;
 
         function deepClone_(obj) {
             return obj === undefined ? undefined : JSON.parse(JSON.stringify(obj));
@@ -1910,6 +1914,28 @@
             const versionAtStart = localChangeVersion;
             sheetSyncPromise = (async () => {
                 try {
+                    // GARDE-FOU CRITIQUE : si aucune lecture reelle du Sheet n'a encore reussi dans
+                    // cette session (navigation privee, stockage local vide, tout premier chargement
+                    // sur cet appareil, ou simplement un rechargement de page qui remet lastServerSnapshot
+                    // a zero), on n'a AUCUNE base fiable pour la fusion ci-dessous. Sans ce garde-fou,
+                    // la fusion se rabat sur "base = remote", ce qui fait paraitre TOUT enregistrement
+                    // present a distance mais absent localement comme "supprime localement" — et
+                    // l'envoi qui suit efface alors reellement ces donnees du Sheet. C'est exactement
+                    // ce qui s'est produit en navigation privee : etat local vide + envoi (ex: le
+                    // journal de connexion) avant la toute premiere lecture reelle = tout le contenu du
+                    // Sheet efface. On attend donc ici que la lecture initiale (deja en cours, voir
+                    // DOMContentLoaded) se termine avant de risquer le moindre envoi.
+                    if (!lastServerSnapshot) {
+                        if (initialLoadPromise) {
+                            await initialLoadPromise;
+                        } else {
+                            await loadFromSheet(false);
+                        }
+                        if (!lastServerSnapshot) {
+                            throw new Error('Connexion au Sheet pas encore établie — nouvel essai dans quelques secondes');
+                        }
+                    }
+
                     // Avant d'envoyer, on relit l'etat actuel du Sheet et on fusionne avec la copie
                     // locale (voir mergeAppState_) plutot que d'envoyer purement et simplement notre
                     // copie locale complete : sinon, un enregistrement modifie ENTRE-TEMPS par un
@@ -3682,7 +3708,55 @@
             if (amountPaidInput) amountPaidInput.value = (eurValue * rate).toFixed(2);
         }
 
-        function handleOrderForm(e) {
+        // Envoie une NOUVELLE commande au serveur pour creation atomique (voir Code.gs, action
+        // 'createOrder') : contrairement au reste de l'appli, cette action ne passe PAS par la
+        // fusion generale (mergeAppState_/syncToSheet) — le serveur valide et decremente le stock
+        // lui-meme, sous verrou, au moment meme de la commande, pour empecher deux commandes
+        // simultanees sur le meme produit d'etre acceptees toutes les deux alors que le stock ne le
+        // permet qu'une fois.
+        async function createOrderOnServer_(payload) {
+            const url = AppState.settings.sheetUrl;
+            if (!url) throw new Error("Connecte d'abord la base (Réglages) avant d'enregistrer une commande");
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'createOrder', data: payload })
+            });
+            if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || "La commande n'a pas pu être enregistrée");
+            return { order: json.order, updatedProducts: json.updatedProducts || [] };
+        }
+
+        // Integre une commande + des produits CONFIRMES par le serveur (voir createOrderOnServer_)
+        // dans l'etat local ET dans la derniere photo connue du serveur (lastServerSnapshot) : ainsi
+        // la PROCHAINE synchronisation generale (n'importe quel autre changement, ailleurs dans
+        // l'appli) ne traitera pas cette commande / ces quantites comme des modifications locales
+        // "en attente" qui devraient a nouveau ecraser le serveur — elles le sont deja.
+        function adoptServerConfirmedOrder_(order, updatedProducts) {
+            if (!AppState.orders.some(o => o.id === order.id)) {
+                AppState.orders.unshift(order);
+            }
+            (updatedProducts || []).forEach(up => {
+                const idx = AppState.products.findIndex(p => p.id === up.id);
+                if (idx >= 0) AppState.products[idx] = Object.assign({}, AppState.products[idx], up);
+            });
+
+            if (lastServerSnapshot) {
+                if (!lastServerSnapshot.orders.some(o => o.id === order.id)) {
+                    lastServerSnapshot.orders = [order, ...lastServerSnapshot.orders];
+                }
+                (updatedProducts || []).forEach(up => {
+                    const idx = lastServerSnapshot.products.findIndex(p => p.id === up.id);
+                    if (idx >= 0) lastServerSnapshot.products[idx] = Object.assign({}, lastServerSnapshot.products[idx], up);
+                });
+            }
+
+            localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
+            renderAll();
+        }
+
+        async function handleOrderForm(e) {
             e.preventDefault();
             const editingId = document.getElementById('order-id').value || '';
             const clientId = document.getElementById('order-client').value;
@@ -3715,10 +3789,21 @@
             }
 
             const existingOrder = editingId ? AppState.orders.find(o => o.id === editingId) : null;
+            const total = items.reduce((sum, l) => sum + l.qty * l.priceSell, 0);
+            const amountPaid = Math.max(0, parseFloat(document.getElementById('order-amount-paid').value) || 0);
+            const paymentMethod = document.getElementById('order-payment-method').value || 'Cash';
+            const clientName = `${client.prenom || ''} ${client.nom || ''}`.trim();
+            const beneficiaryNom = document.getElementById('order-beneficiary-nom').value.trim();
+            const beneficiaryPrenom = document.getElementById('order-beneficiary-prenom').value.trim();
+            const authorName = currentUser ? currentUser.username : '';
 
-            // En modification : on restitue d'abord le stock de l'ancienne version de la commande,
-            // avant de déduire à nouveau selon les nouvelles quantités saisies.
             if (existingOrder) {
+                // Modification d'une commande existante : reste sur le circuit habituel (local +
+                // synchronisation generale). Seule la CREATION passe desormais par l'enregistrement
+                // atomique cote serveur ci-dessous, car c'est a la creation que deux commandes
+                // simultanees sur le meme produit posent probleme (survente). Deux personnes qui
+                // modifient la MEME commande exactement en meme temps est un cas beaucoup plus rare,
+                // non couvert ici.
                 existingOrder.items.forEach(line => {
                     const product = AppState.products.find(p => p.id === line.productId);
                     if (product) {
@@ -3726,29 +3811,17 @@
                         product.lastUpdated = new Date().toISOString();
                     }
                 });
-            }
 
-            // Déduit la quantité commandée du stock disponible
-            const lowStockAfter = [];
-            items.forEach(line => {
-                const product = AppState.products.find(p => p.id === line.productId);
-                if (product) {
-                    product.qty = Math.max(0, product.qty - line.qty);
-                    product.lastUpdated = new Date().toISOString();
-                    if (product.qty <= product.minQty) lowStockAfter.push(product.name);
-                }
-            });
+                const lowStockAfter = [];
+                items.forEach(line => {
+                    const product = AppState.products.find(p => p.id === line.productId);
+                    if (product) {
+                        product.qty = Math.max(0, product.qty - line.qty);
+                        product.lastUpdated = new Date().toISOString();
+                        if (product.qty <= product.minQty) lowStockAfter.push(product.name);
+                    }
+                });
 
-            const total = items.reduce((sum, l) => sum + l.qty * l.priceSell, 0);
-            const amountPaid = Math.max(0, parseFloat(document.getElementById('order-amount-paid').value) || 0);
-            const paymentMethod = document.getElementById('order-payment-method').value || 'Cash';
-            const clientName = `${client.prenom || ''} ${client.nom || ''}`.trim();
-            const beneficiaryNom = document.getElementById('order-beneficiary-nom').value.trim();
-            const beneficiaryPrenom = document.getElementById('order-beneficiary-prenom').value.trim();
-
-            const authorName = currentUser ? currentUser.username : '';
-
-            if (existingOrder) {
                 existingOrder.clientId = client.id;
                 existingOrder.clientName = clientName;
                 existingOrder.beneficiaryNom = beneficiaryNom;
@@ -3762,41 +3835,66 @@
                 existingOrder.updatedAt = new Date().toISOString();
 
                 logAudit('commande', existingOrder.id, `Commande ${clientName}`, 'modification', `Total ${total.toFixed(2)} UM, statut ${existingOrder.status}`);
+
                 saveAppState();
                 closeModal('modal-add-order');
                 showToast(`Commande modifiée pour ${clientName} !`);
-            } else {
-                const order = {
-                    id: 'ord_' + Date.now(),
+
+                if (AppState.settings.autoAlerts && lowStockAfter.length > 0) {
+                    showToast(`⚠️ Stock sous le seuil suite à cette commande : ${lowStockAfter.join(', ')}`, 'warning');
+                }
+                return;
+            }
+
+            // Création : validée et décrémentée de façon ATOMIQUE côté serveur (verrou), pour ne
+            // jamais accepter deux commandes sur le même produit au-delà du stock réellement
+            // disponible, même si deux personnes commandent en même temps depuis deux appareils
+            // différents (voir createOrder_ dans Code.gs).
+            const submitBtn = document.getElementById('order-submit-btn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-60'); }
+
+            try {
+                const payload = {
                     clientId: client.id,
                     clientName,
                     beneficiaryNom,
                     beneficiaryPrenom,
                     items,
-                    total,
                     amountPaid,
-                    status: computeOrderStatus(amountPaid, total),
                     paymentMethod,
                     date: new Date().toISOString().split('T')[0],
                     createdBy: authorName,
-                    updatedBy: authorName,
-                    createdAt: new Date().toISOString(),
                     // Taux de change figé au moment de la création : un changement ultérieur du
                     // taux dans Réglages n'impacte jamais les commandes déjà enregistrées.
-                    exchangeRate: Number(AppState.settings.exchangeRate) || 1,
-                    // Historique des paiements : premier versement enregistré dès la création si un
-                    // montant payé a été saisi directement dans le formulaire.
-                    paymentHistory: amountPaid > 0 ? [{ date: new Date().toISOString(), amount: amountPaid }] : []
+                    exchangeRate: Number(AppState.settings.exchangeRate) || 1
                 };
+                const { order, updatedProducts } = await createOrderOnServer_(payload);
+                // Deja persistee cote serveur (verrou) par createOrderOnServer_ : adoptServerConfirmedOrder_
+                // se charge elle-meme de la sauvegarde locale + du re-rendu. Pas besoin d'un appel a
+                // saveAppState() ici, qui redeclencherait une synchronisation generale complete et
+                // redondante (l'etat est deja a jour des deux cotes).
+                adoptServerConfirmedOrder_(order, updatedProducts);
 
-                AppState.orders.unshift(order);
-                saveAppState();
                 closeModal('modal-add-order');
                 showToast(`Commande enregistrée pour ${order.clientName} !`);
-            }
 
-            if (AppState.settings.autoAlerts && lowStockAfter.length > 0) {
-                showToast(`⚠️ Stock sous le seuil suite à cette commande : ${lowStockAfter.join(', ')}`, 'warning');
+                if (AppState.settings.autoAlerts) {
+                    const lowStockAfter = (updatedProducts || [])
+                        .filter(p => Number(p.qty) <= Number(p.minQty))
+                        .map(p => p.name);
+                    if (lowStockAfter.length > 0) {
+                        showToast(`⚠️ Stock sous le seuil suite à cette commande : ${lowStockAfter.join(', ')}`, 'warning');
+                    }
+                }
+            } catch (err) {
+                console.error('Erreur creation commande:', err);
+                showToast(err.message || "Impossible d'enregistrer la commande — réessaie", 'error');
+                // Le stock a peut-être changé entre-temps (une autre commande vient d'être acceptée
+                // ailleurs) : on réévalue les champs avant de laisser l'utilisateur corriger, plutôt
+                // que de fermer la modale sur un échec silencieux.
+                validateOrderRows();
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-60'); }
             }
         }
 
@@ -6672,7 +6770,8 @@
             }
 
             if (AppState.settings.sheetUrl) {
-                await loadFromSheet(false);
+                initialLoadPromise = loadFromSheet(false);
+                await initialLoadPromise;
             } else {
                 setSyncStatus('Stockage local uniquement', 'warning');
             }
