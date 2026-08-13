@@ -6241,11 +6241,18 @@
                 const createdBy = existingIdx >= 0 ? (AppState.products[existingIdx].createdBy || '') : authorName;
 
                 // purchaseQty (quantité de référence pour le calcul du "Total Achat" côté fournisseur)
-                // n'est mise à jour QUE par ce formulaire (création/édition manuelle d'un produit),
-                // jamais par une commande ou une déclaration de perte : ces dernières ne modifient
-                // que le stock courant (qty), afin que la page Fournisseurs reste stable tant que
-                // rien n'a réellement changé côté achat/règlement fournisseur.
-                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, driveFileId, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName, purchaseQty: qty, supplierLastUpdated: new Date().toISOString() };
+                // n'est figée QUE lors de la CRÉATION du produit (qty = quantité initialement
+                // achetée). Depuis que le champ quantité est verrouillé en édition (v76, sur demande
+                // explicite : "sans la possibilité de modifier les quantités"), une édition ne doit
+                // plus jamais la re-figer sur qty — sinon, éditer un produit pour n'importe quelle
+                // autre raison (ex : joindre une pièce jointe) écrasait silencieusement le "Total
+                // Achat" fournisseur avec le stock COURANT (déjà entamé par des ventes/déclarations),
+                // au lieu de conserver la quantité réellement achetée à l'origine.
+                const purchaseQty = existingIdx >= 0 ? AppState.products[existingIdx].purchaseQty : qty;
+                const supplierLastUpdated = existingIdx >= 0
+                    ? (AppState.products[existingIdx].supplierLastUpdated || AppState.products[existingIdx].createdAt)
+                    : new Date().toISOString();
+                const prodObj = { id, ref, name, category, priceBuy, priceSell, qty, minQty, supplierId, lastUpdated: new Date().toISOString(), createdAt, driveFileId, fileName, supplierAmountPaid, supplierPaidDate, regularisePar, createdBy, updatedBy: authorName, purchaseQty, supplierLastUpdated };
 
                 if (existingIdx >= 0) {
                     AppState.products[existingIdx] = prodObj;
