@@ -1661,8 +1661,11 @@
                 action,          // 'modification' | 'suppression' | 'connexion' | 'deconnexion'
                 details: details || ''
             });
-            // Conserve un historique raisonnable (les 500 dernières entrées)
-            if (AppState.auditLogs.length > 500) AppState.auditLogs.length = 500;
+            // Conserve un historique raisonnable (les 1500 dernières entrées). Plafond relevé
+            // (v24, ex-500) car avec plusieurs personnes qui utilisent l'appli en même temps, les
+            // connexions/déconnexions et modifications s'accumulent plus vite — l'historique se
+            // vidait en quelques jours seulement pour une équipe active.
+            if (AppState.auditLogs.length > 1500) AppState.auditLogs.length = 1500;
         }
 
         // ==================== SYNCHRONISATION GOOGLE SHEETS ====================
@@ -1797,6 +1800,39 @@
             };
         }
 
+        // Deux appareils qui creent chacun un NOUVEAU produit au meme instant peuvent calculer la
+        // meme reference visible (PRD-XXXX) avant que l'un ou l'autre n'ait ete envoye au Sheet : la
+        // fusion (mergeArrayById_) garde bien les deux produits (identifiants internes distincts),
+        // mais ils partagent alors la meme etiquette, ce qui pourrait preter a confusion cote
+        // Fournisseurs/Stock. Appelee juste apres chaque fusion, cette fonction detecte ces
+        // collisions et renumerote automatiquement le(s) doublon(s) le(s) plus recent(s) (le plus
+        // ancien des deux garde sa reference d'origine).
+        function resolveDuplicateProductRefs_(products) {
+            const byRef = new Map();
+            (products || []).forEach(p => {
+                if (!p || !p.ref) return;
+                if (!byRef.has(p.ref)) byRef.set(p.ref, []);
+                byRef.get(p.ref).push(p);
+            });
+            const usedRefs = new Set((products || []).map(p => p && p.ref).filter(Boolean));
+            let changed = false;
+            byRef.forEach(list => {
+                if (list.length <= 1) return;
+                list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+                for (let i = 1; i < list.length; i++) {
+                    let n = 1, candidate;
+                    do {
+                        candidate = nextProductRef(n);
+                        n++;
+                    } while (usedRefs.has(candidate));
+                    list[i].ref = candidate;
+                    usedRefs.add(candidate);
+                    changed = true;
+                }
+            });
+            return changed;
+        }
+
         // Lecture "legere" de l'etat courant du Sheet, utilisee juste avant un envoi (syncToSheet)
         // pour fusionner plutot qu'ecraser purement et simplement. Volontairement minimale (pas de
         // migration, pas de re-rendu) : ce n'est pas un chargement complet, juste une photo pour
@@ -1889,6 +1925,9 @@
                     try {
                         const remote = await fetchServerSnapshot_();
                         payload = mergeAppState_(lastServerSnapshot || remote, AppState, remote);
+                        if (resolveDuplicateProductRefs_(payload.products)) {
+                            console.warn('Collision de reference produit detectee et corrigee automatiquement.');
+                        }
                         AppState = payload;
                     } catch (mergeErr) {
                         // Fusion impossible (reseau...) : on retombe sur l'envoi direct de la copie
