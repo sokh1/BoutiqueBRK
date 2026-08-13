@@ -1689,6 +1689,142 @@
         // lecture deja en cours dont la reponse arrive apres coup.
         let localChangeVersion = 0;
 
+        // Dernier etat du Sheet CONNU (photo prise a chaque lecture ou envoi reussi). Sert de
+        // reference ("base") pour la fusion a 3 voies faite avant chaque envoi (voir syncToSheet) :
+        // en comparant la copie locale actuelle a cette base, on sait quels enregistrements ont
+        // ETE REELLEMENT modifies ICI (ils gagnent) par opposition a ceux qui n'ont pas bouge
+        // localement et doivent donc suivre la version distante la plus recente (qui a pu changer
+        // entre-temps sur un AUTRE appareil/utilisateur).
+        let lastServerSnapshot = null;
+
+        function deepClone_(obj) {
+            return obj === undefined ? undefined : JSON.parse(JSON.stringify(obj));
+        }
+
+        // Egalite profonde, insensible a l'ordre des cles (contrairement a une simple comparaison
+        // JSON.stringify(a) === JSON.stringify(b), qui donnerait un faux "different" des que deux
+        // objets aux memes valeurs sont construits avec un ordre de proprietes different — ce qui
+        // arrive tres facilement ici, ex: l'ordre des colonnes cote Sheet (Code.gs) ne correspond
+        // pas exactement a l'ordre de construction de prodObj cote appli).
+        function deepEqual_(a, b) {
+            if (a === b) return true;
+            if (a === null || b === null || a === undefined || b === undefined) return a === b;
+            if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+            if (Array.isArray(a) !== Array.isArray(b)) return false;
+            if (Array.isArray(a)) {
+                if (a.length !== b.length) return false;
+                for (let i = 0; i < a.length; i++) { if (!deepEqual_(a[i], b[i])) return false; }
+                return true;
+            }
+            const aKeys = Object.keys(a), bKeys = Object.keys(b);
+            if (aKeys.length !== bKeys.length) return false;
+            for (const k of aKeys) {
+                if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+                if (!deepEqual_(a[k], b[k])) return false;
+            }
+            return true;
+        }
+
+        // Fusion a 3 voies d'une collection identifiee par "id" (produits, fournisseurs, clients,
+        // commandes, depenses, utilisateurs) : pour chaque identifiant rencontre dans base/local/
+        // distant, la version LOCALE gagne si (et seulement si) elle differe de la base (= a ete
+        // creee, modifiee ou supprimee ICI depuis la derniere synchronisation connue) ; sinon, la
+        // version DISTANTE la plus recente est conservee (elle a pu etre modifiee ou supprimee par
+        // un autre appareil/utilisateur entre-temps). Objectif : qu'un envoi depuis CET appareil
+        // n'ecrase plus jamais, par megarde, une modification faite ailleurs sur un enregistrement
+        // que cet appareil n'a lui-meme pas touche.
+        function mergeArrayById_(base, local, remote, idKey) {
+            const baseArr = base || [], localArr = local || [], remoteArr = remote || [];
+            const baseMap = new Map(baseArr.filter(x => x && x[idKey] != null).map(x => [x[idKey], x]));
+            const localMap = new Map(localArr.filter(x => x && x[idKey] != null).map(x => [x[idKey], x]));
+            const remoteMap = new Map(remoteArr.filter(x => x && x[idKey] != null).map(x => [x[idKey], x]));
+            const allIds = new Set([...baseMap.keys(), ...localMap.keys(), ...remoteMap.keys()]);
+            const result = [];
+            allIds.forEach(id => {
+                const b = baseMap.get(id), l = localMap.get(id), r = remoteMap.get(id);
+                if (l === undefined && b !== undefined) {
+                    // Supprime localement. Si le distant a ete modifie depuis la base (conflit rare :
+                    // modifie ailleurs pendant qu'on le supprimait ici), on prefere ne pas perdre cette
+                    // modification distante plutot que de la supprimer silencieusement.
+                    if (r !== undefined && !deepEqual_(r, b)) result.push(r);
+                    return;
+                }
+                if (l !== undefined && !deepEqual_(l, b)) {
+                    // Cree ou modifie localement depuis la base : la version locale gagne.
+                    result.push(l);
+                    return;
+                }
+                // Non touche localement depuis la base : on suit le distant (nouvelle version, ou
+                // disparu = supprime ailleurs).
+                if (r !== undefined) result.push(r);
+            });
+            return result;
+        }
+
+        // Collections "journal" (uniquement des ajouts, jamais d'edition ni de suppression) : simple
+        // union par id, aucune notion de "gagnant" necessaire.
+        function mergeLogsById_(local, remote, idKey) {
+            const map = new Map();
+            (remote || []).forEach(x => { if (x && x[idKey] != null) map.set(x[idKey], x); });
+            (local || []).forEach(x => { if (x && x[idKey] != null) map.set(x[idKey], x); });
+            return Array.from(map.values());
+        }
+
+        // Meme principe que mergeArrayById_ mais pour l'objet "settings" (pas une collection) :
+        // fusion cle par cle plutot qu'enregistrement par enregistrement.
+        function mergeSettings_(base, local, remote) {
+            const b = base || {}, l = local || {}, r = remote || {};
+            const merged = {};
+            const allKeys = new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)]);
+            allKeys.forEach(k => {
+                merged[k] = deepEqual_(l[k], b[k]) ? (r[k] !== undefined ? r[k] : l[k]) : l[k];
+            });
+            return merged;
+        }
+
+        function mergeAppState_(base, local, remote) {
+            const b = base || {}, l = local || {}, r = remote || {};
+            return {
+                products: mergeArrayById_(b.products, l.products, r.products, 'id'),
+                suppliers: mergeArrayById_(b.suppliers, l.suppliers, r.suppliers, 'id'),
+                clients: mergeArrayById_(b.clients, l.clients, r.clients, 'id'),
+                orders: mergeArrayById_(b.orders, l.orders, r.orders, 'id'),
+                expenses: mergeArrayById_(b.expenses, l.expenses, r.expenses, 'id'),
+                users: mergeArrayById_(b.users, l.users, r.users, 'id'),
+                waLogs: mergeLogsById_(l.waLogs, r.waLogs, 'id'),
+                auditLogs: mergeLogsById_(l.auditLogs, r.auditLogs, 'id'),
+                settings: mergeSettings_(b.settings, l.settings, r.settings)
+            };
+        }
+
+        // Lecture "legere" de l'etat courant du Sheet, utilisee juste avant un envoi (syncToSheet)
+        // pour fusionner plutot qu'ecraser purement et simplement. Volontairement minimale (pas de
+        // migration, pas de re-rendu) : ce n'est pas un chargement complet, juste une photo pour
+        // comparaison/fusion.
+        async function fetchServerSnapshot_() {
+            const url = AppState.settings.sheetUrl;
+            if (!url) throw new Error('URL Sheet non configuree');
+            const res = await fetch(url, { method: 'GET' });
+            if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('json')) throw new Error('Reponse inattendue du serveur (pas du JSON)');
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || 'Reponse invalide');
+            const data = json.data || {};
+            const toText = (v) => (v === undefined || v === null) ? '' : String(v);
+            return {
+                products: data.products || [],
+                suppliers: (data.suppliers || []).map(s => ({ ...s, phone: toText(s.phone) })),
+                clients: (data.clients || []).map(c => ({ ...c, phone: toText(c.phone) })),
+                orders: data.orders || [],
+                expenses: data.expenses || [],
+                users: data.users || [],
+                waLogs: data.waLogs || [],
+                auditLogs: data.auditLogs || [],
+                settings: data.settings || {}
+            };
+        }
+
         function saveAppState() {
             localStorage.setItem('stock_wa_app_food_v1', JSON.stringify(AppState));
             renderAll();
@@ -1730,16 +1866,44 @@
             sheetSyncInFlight = true;
             sheetSyncPromise = (async () => {
                 try {
+                    // Avant d'envoyer, on relit l'etat actuel du Sheet et on fusionne avec la copie
+                    // locale (voir mergeAppState_) plutot que d'envoyer purement et simplement notre
+                    // copie locale complete : sinon, un enregistrement modifie ENTRE-TEMPS par un
+                    // AUTRE appareil/utilisateur (ex : un fournisseur regularise depuis le telephone
+                    // pendant qu'un ordinateur reste ouvert en arriere-plan) serait ecrase par notre
+                    // propre copie, potentiellement perimee, de ce meme enregistrement des le prochain
+                    // envoi automatique de cet ordinateur — meme si cet envoi ne concerne, de son point
+                    // de vue, qu'un tout autre changement. Seuls les enregistrements reellement
+                    // modifies ICI (cree/edite/supprime localement depuis la derniere synchronisation
+                    // connue) remplacent la version distante ; tout le reste suit la version distante
+                    // la plus recente.
+                    let payload = AppState;
+                    try {
+                        const remote = await fetchServerSnapshot_();
+                        payload = mergeAppState_(lastServerSnapshot || remote, AppState, remote);
+                        AppState = payload;
+                    } catch (mergeErr) {
+                        // Fusion impossible (reseau...) : on retombe sur l'envoi direct de la copie
+                        // locale plutot que de bloquer la sauvegarde.
+                        console.warn('Fusion avant synchronisation impossible, envoi direct :', mergeErr);
+                    }
+
                     await fetch(url, {
                         method: 'POST',
                         // text/plain evite le preflight CORS (OPTIONS) qu'Apps Script ne gere pas nativement
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ action: 'saveAll', data: AppState })
+                        body: JSON.stringify({ action: 'saveAll', data: payload })
+                    });
+                    lastServerSnapshot = deepClone_({
+                        products: payload.products, suppliers: payload.suppliers, clients: payload.clients,
+                        orders: payload.orders, expenses: payload.expenses, users: payload.users,
+                        waLogs: payload.waLogs, auditLogs: payload.auditLogs, settings: payload.settings
                     });
                     setSyncStatus('Google Sheet synchronise', 'ok');
                     hasPendingLocalChanges = false;
                     sheetSyncInFlight = false;
                     sheetSyncPromise = null;
+                    renderAll();
                 } catch (err) {
                     console.error('Erreur de synchronisation Google Sheet:', err);
                     sheetSyncInFlight = false;
@@ -1815,6 +1979,16 @@
                     auditLogs: data.auditLogs || AppState.auditLogs || [],
                     settings: { ...AppState.settings, ...data.settings, sheetUrl: url }
                 };
+
+                // Photo de reference pour la prochaine fusion a 3 voies (voir syncToSheet) : c'est
+                // cet etat, tel que lu du Sheet a l'instant present, qui servira de "base" pour
+                // determiner quels enregistrements auront ete reellement modifies localement lors
+                // du prochain envoi.
+                lastServerSnapshot = deepClone_({
+                    products: AppState.products, suppliers: AppState.suppliers, clients: AppState.clients,
+                    orders: AppState.orders, expenses: AppState.expenses, users: AppState.users,
+                    waLogs: AppState.waLogs, auditLogs: AppState.auditLogs, settings: AppState.settings
+                });
 
                 // Même conversion jours -> heures que celle appliquée au chargement local (voir plus
                 // haut), au cas où le Sheet contiendrait encore d'anciennes clés notifOrdersDays/
