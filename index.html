@@ -372,7 +372,6 @@
                         <span>Reste à percevoir (Impayé + Partiel)</span>
                     </div>
                 </button>
-
                 <button type="button" onclick="switchTab('suppliers')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Dû aux Fournisseurs</span>
@@ -388,7 +387,6 @@
                         <span>Reste à régler (Impayé + Partiel)</span>
                     </div>
                 </button>
-
                 <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Encaissé sur Pertes</span>
@@ -404,7 +402,6 @@
                         <span>Toutes déclarations de perte confondues</span>
                     </div>
                 </button>
-
                 <button type="button" onclick="switchTab('orders')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Trop perçu à rendre (Clients)</span>
@@ -420,7 +417,13 @@
                         <span>Statut "Rendre au client"</span>
                     </div>
                 </button>
+            </div>
 
+            <!-- Trop perçu Fournisseurs + envoi WhatsApp juste en dessous (desktop) : occupe l'espace
+                 auparavant vide a cote de "Total Pertes"/"Total Depenses", au lieu de laisser un
+                 grand espace blanc au-dessus de la carte WhatsApp plus bas dans la page. -->
+            <div class="agent-restricted grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div class="space-y-5">
                 <button type="button" onclick="switchTab('suppliers')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Trop perçu Fournisseurs</span>
@@ -436,80 +439,6 @@
                         <span>Statut "Trop perçu — à rembourser"</span>
                     </div>
                 </button>
-
-                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Pertes</span>
-                        <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg">
-                            <i class="fa-solid fa-box-open"></i>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <span id="kpi-losses-total" class="text-2xl font-extrabold text-rose-600">0.00 UM</span>
-                    </div>
-                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
-                        <i class="fa-solid fa-tag text-slate-400"></i>
-                        <span>Toutes déclarations de perte confondues</span>
-                    </div>
-                </button>
-
-                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Dépenses</span>
-                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
-                            <i class="fa-solid fa-money-bill-wave"></i>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <span id="kpi-expenses-total" class="text-2xl font-extrabold text-amber-600">0.00 UM</span>
-                    </div>
-                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
-                        <i class="fa-solid fa-receipt text-slate-400"></i>
-                        <span>Toutes déclarations de dépense confondues</span>
-                    </div>
-                </button>
-            </div>
-
-            <!-- Two Columns Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Left 2 Cols: Low Stock Warning & Quick Actions -->
-                <div class="lg:col-span-2 space-y-6">
-                    <!-- Critical Alert Panel -->
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                            <div class="flex items-center space-x-3">
-                                <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-sm font-bold">
-                                    <i class="fa-solid fa-triangle-exclamation"></i>
-                                </div>
-                                <h2 class="text-lg font-bold text-slate-900">Produits sous le Seuil d'Alerte</h2>
-                            </div>
-                            <button onclick="switchTab('inventory')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">Voir tout &rarr;</button>
-                        </div>
-
-                        <div id="dash-critical-list" class="space-y-3">
-                            <!-- Dynamic Content -->
-                        </div>
-                    </div>
-
-                    <!-- Products Missing a Linked Supplier -->
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                            <div class="flex items-center space-x-3">
-                                <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold">
-                                    <i class="fa-solid fa-truck-field"></i>
-                                </div>
-                                <h2 class="text-lg font-bold text-slate-900">Produits sans Fournisseur lié</h2>
-                            </div>
-                            <button onclick="switchTab('suppliers')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">Gérer les fournisseurs &rarr;</button>
-                        </div>
-                        <div id="dash-no-supplier-list" class="space-y-3">
-                            <!-- Dynamic Content -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column: Quick WhatsApp Trigger -->
-                <div class="space-y-6">
                     <!-- Direct WhatsApp Notification Card -->
                     <div class="bg-gradient-to-br from-emerald-900 to-teal-950 text-white p-6 rounded-2xl shadow-lg border border-emerald-800">
                         <div class="flex items-center space-x-3 mb-4">
@@ -550,6 +479,78 @@
                         </form>
                     </div>
 
+                </div>
+                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Pertes</span>
+                        <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-losses-total" class="text-2xl font-extrabold text-rose-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-tag text-slate-400"></i>
+                        <span>Toutes déclarations de perte confondues</span>
+                    </div>
+                </button>
+                <button type="button" onclick="switchTab('declarations')" class="text-left bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Dépenses</span>
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+                            <i class="fa-solid fa-money-bill-wave"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <span id="kpi-expenses-total" class="text-2xl font-extrabold text-amber-600">0.00 UM</span>
+                    </div>
+                    <div class="mt-2 text-xs text-slate-500 flex items-center space-x-1">
+                        <i class="fa-solid fa-receipt text-slate-400"></i>
+                        <span>Toutes déclarations de dépense confondues</span>
+                    </div>
+                </button>
+            </div>
+            <!-- Two Columns Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left 2 Cols: Low Stock Warning & Quick Actions -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Critical Alert Panel -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-sm font-bold">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                </div>
+                                <h2 class="text-lg font-bold text-slate-900">Produits sous le Seuil d'Alerte</h2>
+                            </div>
+                            <button onclick="switchTab('inventory')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">Voir tout &rarr;</button>
+                        </div>
+
+                        <div id="dash-critical-list" class="space-y-3">
+                            <!-- Dynamic Content -->
+                        </div>
+                    </div>
+
+                    <!-- Products Missing a Linked Supplier -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold">
+                                    <i class="fa-solid fa-truck-field"></i>
+                                </div>
+                                <h2 class="text-lg font-bold text-slate-900">Produits sans Fournisseur lié</h2>
+                            </div>
+                            <button onclick="switchTab('suppliers')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">Gérer les fournisseurs &rarr;</button>
+                        </div>
+                        <div id="dash-no-supplier-list" class="space-y-3">
+                            <!-- Dynamic Content -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Quick WhatsApp Trigger -->
+                <div class="space-y-6">
                     <!-- Flow Diagram Card -->
                     <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                         <h3 class="font-bold text-slate-900 text-sm mb-3 flex items-center space-x-2">
@@ -678,20 +679,39 @@
         <!-- ================= TAB 3: FOURNISSEURS ================= -->
         <section id="tab-suppliers" class="tab-content hidden space-y-6">
             <!-- Header Controls -->
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg">
-                        <i class="fa-solid fa-truck-field"></i>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <div class="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                    <div class="flex items-center space-x-3 w-full sm:w-auto">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg flex-shrink-0">
+                            <i class="fa-solid fa-truck-field"></i>
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-slate-900 text-lg">Gestion des Fournisseurs</h2>
+                            <p class="text-slate-500 text-xs">Ajoutez vos fournisseurs et liez-les a vos produits pour cibler vos alertes stock</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 class="font-bold text-slate-900 text-lg">Gestion des Fournisseurs</h2>
-                        <p class="text-slate-500 text-xs">Ajoutez vos fournisseurs et liez-les a vos produits pour cibler vos alertes stock</p>
-                    </div>
+                    <button onclick="openAddSupplierModal()" class="agent-restricted w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all shadow-md whitespace-nowrap">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Nouveau Fournisseur</span>
+                    </button>
                 </div>
-                <button onclick="openAddSupplierModal()" class="agent-restricted bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center space-x-2 transition-all shadow-md">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Nouveau Fournisseur</span>
-                </button>
+
+                <!-- Filtre par statut de règlement (Produits fournis) : n'affiche que les fournisseurs
+                     ayant au moins un produit dans le statut choisi, et ne montre que ces lignes-là
+                     dans leur carte "Produits fournis". -->
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="relative w-full sm:flex-1">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" id="suppliers-search" oninput="renderSuppliers()" placeholder="Rechercher un fournisseur ou un produit..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <select id="suppliers-filter-status" onchange="renderSuppliers()" class="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <option value="all">Tous les statuts</option>
+                        <option value="Impayé">Impayé</option>
+                        <option value="Partiel">Partiellement payé</option>
+                        <option value="Payé">Payé</option>
+                        <option value="Trop perçu — à rembourser">Trop perçu — à rembourser</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Suppliers Grid -->
@@ -702,8 +722,8 @@
             <!-- Empty Suppliers State -->
             <div id="suppliers-empty" class="hidden bg-white rounded-2xl p-12 text-center border border-slate-200">
                 <i class="fa-solid fa-truck-field text-4xl text-slate-300 mb-3"></i>
-                <p class="text-slate-600 font-bold text-base">Aucun fournisseur enregistre</p>
-                <p class="text-slate-400 text-xs mt-1">Cliquez sur "Nouveau Fournisseur" pour en ajouter un.</p>
+                <p id="suppliers-empty-title" class="text-slate-600 font-bold text-base">Aucun fournisseur enregistre</p>
+                <p id="suppliers-empty-hint" class="text-slate-400 text-xs mt-1">Cliquez sur "Nouveau Fournisseur" pour en ajouter un.</p>
             </div>
         </section>
 
@@ -711,7 +731,7 @@
         <section id="tab-clients" class="tab-content hidden space-y-6">
             <!-- Header Controls -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3 w-full sm:w-auto">
                     <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg">
                         <i class="fa-solid fa-users"></i>
                     </div>
@@ -720,10 +740,16 @@
                         <p class="text-slate-500 text-xs">Carnet de contacts de vos clients</p>
                     </div>
                 </div>
-                <button onclick="openAddClientModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center space-x-2 transition-all shadow-md">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Nouveau Client</span>
-                </button>
+                <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <div class="relative w-full sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" id="clients-search" oninput="renderClients()" placeholder="Rechercher un client..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <button onclick="openAddClientModal()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm flex items-center justify-center space-x-2 transition-all shadow-md whitespace-nowrap">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Nouveau Client</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Clients Grid -->
@@ -734,8 +760,8 @@
             <!-- Empty Clients State -->
             <div id="clients-empty" class="hidden bg-white rounded-2xl p-12 text-center border border-slate-200">
                 <i class="fa-solid fa-users text-4xl text-slate-300 mb-3"></i>
-                <p class="text-slate-600 font-bold text-base">Aucun client enregistre</p>
-                <p class="text-slate-400 text-xs mt-1">Cliquez sur "Nouveau Client" pour en ajouter un.</p>
+                <p id="clients-empty-title" class="text-slate-600 font-bold text-base">Aucun client enregistre</p>
+                <p id="clients-empty-hint" class="text-slate-400 text-xs mt-1">Cliquez sur "Nouveau Client" pour en ajouter un.</p>
             </div>
         </section>
 
@@ -3246,17 +3272,45 @@
         function renderSuppliers() {
             const grid = document.getElementById('suppliers-grid');
             const empty = document.getElementById('suppliers-empty');
+            const emptyTitle = document.getElementById('suppliers-empty-title');
+            const emptyHint = document.getElementById('suppliers-empty-hint');
+            const statusFilterEl = document.getElementById('suppliers-filter-status');
+            const statusFilter = statusFilterEl ? statusFilterEl.value : 'all';
+            const searchEl = document.getElementById('suppliers-search');
+            const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : '';
+            const supplierStatusStyles = { 'Payé': 'bg-emerald-100 text-emerald-800', 'Impayé': 'bg-rose-100 text-rose-800', 'Partiel': 'bg-amber-100 text-amber-800', 'Trop perçu — à rembourser': 'bg-purple-100 text-purple-800' };
 
-            if(AppState.suppliers.length === 0) {
+            if (AppState.suppliers.length === 0) {
                 grid.innerHTML = '';
                 empty.classList.remove('hidden');
+                if (emptyTitle) emptyTitle.textContent = 'Aucun fournisseur enregistre';
+                if (emptyHint) emptyHint.textContent = 'Cliquez sur "Nouveau Fournisseur" pour en ajouter un.';
             } else {
-                empty.classList.add('hidden');
-                grid.innerHTML = AppState.suppliers.map(s => {
+                const cards = AppState.suppliers.map(s => {
                     const linkedProducts = AppState.products.filter(p => p.supplierId === s.id);
-                    const supplierStatusStyles = { 'Payé': 'bg-emerald-100 text-emerald-800', 'Impayé': 'bg-rose-100 text-rose-800', 'Partiel': 'bg-amber-100 text-amber-800', 'Trop perçu — à rembourser': 'bg-purple-100 text-purple-800' };
-                    const productsHtml = linkedProducts.length
-                        ? linkedProducts.map(p => {
+                    // Recherche : si le nom/téléphone du fournisseur correspond, on garde tous ses produits
+                    // (filtrés par statut) ; sinon on ne garde que les produits dont le nom correspond au
+                    // texte recherché, en plus du filtre de statut.
+                    const supplierNameMatches = !searchTerm || (s.name || '').toLowerCase().includes(searchTerm) || (s.phone || '').toLowerCase().includes(searchTerm);
+                    const visibleProducts = linkedProducts.filter(p => {
+                        if (statusFilter !== 'all') {
+                            const totalAchat = (p.priceBuy || 0) * (p.purchaseQty ?? p.qty);
+                            const paidToSupplier = Number(p.supplierAmountPaid) || 0;
+                            if (computeSupplierPaymentStatus(paidToSupplier, totalAchat) !== statusFilter) return false;
+                        }
+                        if (searchTerm && !supplierNameMatches) {
+                            return (p.name || '').toLowerCase().includes(searchTerm);
+                        }
+                        return true;
+                    });
+                    // Masque entierement la carte si un filtre de statut est actif sans produit
+                    // correspondant, OU si une recherche est active, que le fournisseur lui-meme ne
+                    // correspond pas au texte recherche, et qu'aucun de ses produits n'y correspond non plus.
+                    const hideForStatus = statusFilter !== 'all' && visibleProducts.length === 0;
+                    const hideForSearch = !!searchTerm && !supplierNameMatches && visibleProducts.length === 0;
+                    if (hideForStatus || hideForSearch) return null;
+                    const productsHtml = visibleProducts.length
+                        ? visibleProducts.map(p => {
                             // purchaseQty/supplierLastUpdated : figés au dernier ajout/édition manuelle du
                             // produit, jamais modifiés par une commande ou une déclaration de perte — ce
                             // qui garantit que cette carte fournisseur ne bouge pas tant qu'aucune vraie
@@ -3322,7 +3376,17 @@
                             </div>
                         </div>
                     `;
-                }).join('');
+                }).filter(Boolean);
+
+                if ((statusFilter !== 'all' || searchTerm) && cards.length === 0) {
+                    grid.innerHTML = '';
+                    empty.classList.remove('hidden');
+                    if (emptyTitle) emptyTitle.textContent = searchTerm ? 'Aucun resultat pour cette recherche' : 'Aucun fournisseur avec ce statut';
+                    if (emptyHint) emptyHint.textContent = 'Essayez un autre filtre ou une autre recherche.';
+                } else {
+                    empty.classList.add('hidden');
+                    grid.innerHTML = cards.join('');
+                }
             }
 
             // Keep product-row supplier dropdowns in sync (any open rows in the product modal)
@@ -3393,10 +3457,31 @@
         function renderClients() {
             const grid = document.getElementById('clients-grid');
             const empty = document.getElementById('clients-empty');
+            const emptyTitle = document.getElementById('clients-empty-title');
+            const emptyHint = document.getElementById('clients-empty-hint');
+            const searchEl = document.getElementById('clients-search');
+            const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : '';
 
-            if(AppState.clients.length === 0) {
+            if (AppState.clients.length === 0) {
                 grid.innerHTML = '';
                 empty.classList.remove('hidden');
+                if (emptyTitle) emptyTitle.textContent = 'Aucun client enregistre';
+                if (emptyHint) emptyHint.textContent = 'Cliquez sur "Nouveau Client" pour en ajouter un.';
+                return;
+            }
+
+            const filteredClients = searchTerm
+                ? AppState.clients.filter(cl => {
+                    const haystack = `${cl.prenom || ''} ${cl.nom || ''} ${cl.lieu || ''} ${cl.phone || ''}`.toLowerCase();
+                    return haystack.includes(searchTerm);
+                })
+                : AppState.clients;
+
+            if (filteredClients.length === 0) {
+                grid.innerHTML = '';
+                empty.classList.remove('hidden');
+                if (emptyTitle) emptyTitle.textContent = 'Aucun resultat pour cette recherche';
+                if (emptyHint) emptyHint.textContent = 'Essayez un autre nom, lieu ou numero de telephone.';
                 return;
             }
             empty.classList.add('hidden');
@@ -3408,7 +3493,7 @@
                 'Rendre au client': 'bg-purple-100 text-purple-800'
             };
 
-            grid.innerHTML = AppState.clients.map(cl => {
+            grid.innerHTML = filteredClients.map(cl => {
                 const clientOrders = AppState.orders.filter(o => o.clientId === cl.id);
                 const statusCounts = { 'Payé': 0, 'Impayé': 0, 'Partiel': 0, 'Rendre au client': 0 };
                 clientOrders.forEach(o => { if (statusCounts[o.status] !== undefined) statusCounts[o.status]++; });
